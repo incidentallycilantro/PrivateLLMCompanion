@@ -10,6 +10,9 @@ struct ChatView: View {
     @State private var streamedMessage: String = ""
     @State private var currentModel: String = "mistral:latest"
     @State private var showingModelPicker = false
+    @State private var responseStartTime: Date?
+    @State private var estimatedResponseTime: Double = 3.0
+    @State private var isTyping = false
     
     @StateObject private var ollamaService = OllamaService()
     @StateObject private var modelManager = DynamicModelManager()
@@ -21,26 +24,32 @@ struct ChatView: View {
                 connectionStatusBar
             }
             
-            // Model indicator bar
+            // Model indicator bar with response speed info
             if !modelManager.availableModels.isEmpty {
                 modelIndicatorBar
             }
             
-            // Chat messages
+            // Chat messages with enhanced visual feedback
             ScrollView {
                 LazyVStack(alignment: .leading, spacing: 12) {
                     ForEach(messages) { message in
-                        MessageRowView(message: message)
+                        EnhancedMessageRowView(message: message)
                     }
                     
-                    // Streaming message display
-                    if isLoading && !streamedMessage.isEmpty {
-                        StreamingMessageView(content: streamedMessage)
-                    }
-                    
-                    // Loading indicator
-                    if isLoading && streamedMessage.isEmpty {
-                        LoadingMessageView(model: currentModel)
+                    // Enhanced streaming message display
+                    if isLoading {
+                        if streamedMessage.isEmpty {
+                            EnhancedLoadingView(
+                                model: currentModel,
+                                estimatedTime: estimatedResponseTime,
+                                elapsedTime: responseStartTime.map { Date().timeIntervalSince($0) } ?? 0
+                            )
+                        } else {
+                            StreamingMessageView(
+                                content: streamedMessage,
+                                isComplete: false
+                            )
+                        }
                     }
                 }
                 .padding()
@@ -48,8 +57,8 @@ struct ChatView: View {
             
             Divider()
             
-            // Input area
-            inputArea
+            // Enhanced input area with immediate feedback
+            enhancedInputArea
         }
         .navigationTitle(selectedProject?.title ?? "No Project")
         .toolbar {
@@ -105,7 +114,7 @@ struct ChatView: View {
         .background(Color.orange.opacity(0.1))
     }
     
-    // MARK: - Model Indicator Bar
+    // MARK: - Enhanced Model Indicator Bar
     
     private var modelIndicatorBar: some View {
         HStack {
@@ -130,6 +139,21 @@ struct ChatView: View {
                     .cornerRadius(3)
             }
             
+            // Speed indicator
+            if isLoading {
+                HStack(spacing: 4) {
+                    Image(systemName: "timer")
+                        .foregroundColor(.blue)
+                        .font(.caption2)
+                    
+                    if let startTime = responseStartTime {
+                        Text("\(String(format: "%.1f", Date().timeIntervalSince(startTime)))s")
+                            .font(.caption2)
+                            .foregroundColor(.blue)
+                    }
+                }
+            }
+            
             Spacer()
             
             if ollamaService.isConnected {
@@ -146,25 +170,58 @@ struct ChatView: View {
         .background(Color.gray.opacity(0.05))
     }
     
-    // MARK: - Input Area
+    // MARK: - Enhanced Input Area
     
-    private var inputArea: some View {
-        HStack {
-            TextField("Type your message...", text: $inputText, axis: .vertical)
-                .textFieldStyle(RoundedBorderTextFieldStyle())
-                .lineLimit(1...4)
-                .onSubmit {
-                    if canSendMessage {
+    private var enhancedInputArea: some View {
+        VStack(spacing: 8) {
+            // Show typing indicator when user is composing
+            if isTyping && !inputText.isEmpty {
+                HStack {
+                    Image(systemName: "ellipsis")
+                        .foregroundColor(.blue)
+                    Text("Analyzing your message...")
+                        .font(.caption)
+                        .foregroundColor(.blue)
+                    Spacer()
+                }
+                .padding(.horizontal)
+                .transition(.opacity)
+            }
+            
+            HStack {
+                TextField("Type your message...", text: $inputText, axis: .vertical)
+                    .textFieldStyle(RoundedBorderTextFieldStyle())
+                    .lineLimit(1...4)
+                    .onChange(of: inputText) { newValue in
+                        handleTextChange(newValue)
+                    }
+                    .onSubmit {
+                        if canSendMessage {
+                            sendMessage()
+                        }
+                    }
+                    .disabled(!ollamaService.isConnected)
+                
+                Button(action: {
+                    if isLoading {
+                        // TODO: Implement stop functionality
+                        print("Stop button pressed")
+                    } else {
                         sendMessage()
                     }
+                }) {
+                    ZStack {
+                        if isLoading {
+                            Image(systemName: "stop.circle.fill")
+                                .foregroundColor(.red)
+                        } else {
+                            Image(systemName: "paperplane.fill")
+                                .foregroundColor(canSendMessage ? .blue : .secondary)
+                        }
+                    }
                 }
-                .disabled(!ollamaService.isConnected)
-            
-            Button(action: sendMessage) {
-                Image(systemName: "paperplane.fill")
-                    .foregroundColor(canSendMessage ? .blue : .secondary)
+                .disabled(!canSendMessage && !isLoading)
             }
-            .disabled(!canSendMessage)
         }
         .padding()
     }
@@ -188,7 +245,9 @@ struct ChatView: View {
     }
     
     private func loadMessages() {
-        messages = selectedProject?.chats ?? []
+        withAnimation(.easeInOut(duration: 0.3)) {
+            messages = selectedProject?.chats ?? []
+        }
     }
     
     private func setInitialModel() {
@@ -200,7 +259,27 @@ struct ChatView: View {
         }
     }
     
-    // MARK: - Message Sending
+    private func handleTextChange(_ text: String) {
+        // Show typing indicator for longer messages
+        withAnimation(.easeInOut(duration: 0.2)) {
+            isTyping = text.count > 10
+        }
+        
+        // Estimate response time based on message complexity
+        if text.count > 0 {
+            estimatedResponseTime = estimateResponseTime(for: text)
+        }
+    }
+    
+    private func estimateResponseTime(for text: String) -> Double {
+        let baseTime = 2.0
+        let lengthFactor = Double(text.count) / 100.0
+        let complexityFactor = text.lowercased().contains("code") ? 2.0 : 1.0
+        
+        return min(baseTime + lengthFactor * complexityFactor, 15.0)
+    }
+    
+    // MARK: - Message Sending with Enhanced Feedback
     
     private func sendMessage() {
         guard let selectedProject = selectedProject else { return }
@@ -209,11 +288,15 @@ struct ChatView: View {
         let userMessage = ChatMessage(id: UUID(), role: .user, content: inputText)
         let messageToSend = inputText
         
-        // Update UI immediately
-        messages.append(userMessage)
-        inputText = ""
-        isLoading = true
-        streamedMessage = ""
+        // Immediate UI feedback with animation
+        withAnimation(.spring(response: 0.4, dampingFraction: 0.8)) {
+            messages.append(userMessage)
+            inputText = ""
+            isLoading = true
+            isTyping = false
+            streamedMessage = ""
+            responseStartTime = Date()
+        }
         
         Task {
             // Select optimal model if auto-optimization is enabled
@@ -238,7 +321,7 @@ struct ChatView: View {
     private func generateResponse(message: String, model: String) async {
         guard let selectedProject = selectedProject else { return }
         
-        let context = Array(messages.prefix(messages.count - 1)) // Exclude the just-added user message
+        let context = Array(messages.prefix(messages.count - 1))
         
         for await response in ollamaService.generateResponse(
             prompt: message,
@@ -250,15 +333,18 @@ struct ChatView: View {
                 self.streamedMessage = response.content
                 
                 if response.isComplete {
-                    // Save the complete response
-                    let aiMessage = ChatMessage(
-                        id: UUID(),
-                        role: .assistant,
-                        content: response.content
-                    )
-                    self.messages.append(aiMessage)
-                    self.streamedMessage = ""
-                    self.isLoading = false
+                    // Complete with animation
+                    withAnimation(.easeInOut(duration: 0.4)) {
+                        let aiMessage = ChatMessage(
+                            id: UUID(),
+                            role: .assistant,
+                            content: response.content
+                        )
+                        self.messages.append(aiMessage)
+                        self.streamedMessage = ""
+                        self.isLoading = false
+                        self.responseStartTime = nil
+                    }
                     
                     // Save to project
                     if let index = self.projects.firstIndex(where: { $0.id == selectedProject.id }) {
@@ -272,23 +358,27 @@ struct ChatView: View {
         // Handle case where streaming finishes without completion
         await MainActor.run {
             if self.isLoading {
-                self.isLoading = false
-                if !self.streamedMessage.isEmpty {
-                    let aiMessage = ChatMessage(
-                        id: UUID(),
-                        role: .assistant,
-                        content: self.streamedMessage
-                    )
-                    self.messages.append(aiMessage)
-                    self.streamedMessage = ""
+                withAnimation(.easeInOut(duration: 0.4)) {
+                    self.isLoading = false
+                    self.responseStartTime = nil
                     
-                    // Save to project
-                    if let index = self.projects.firstIndex(where: { $0.id == selectedProject.id }) {
-                        self.projects[index].chats = self.messages
-                        PersistenceManager.saveProjects(self.projects)
+                    if !self.streamedMessage.isEmpty {
+                        let aiMessage = ChatMessage(
+                            id: UUID(),
+                            role: .assistant,
+                            content: self.streamedMessage
+                        )
+                        self.messages.append(aiMessage)
+                        self.streamedMessage = ""
+                        
+                        // Save to project
+                        if let index = self.projects.firstIndex(where: { $0.id == selectedProject.id }) {
+                            self.projects[index].chats = self.messages
+                            PersistenceManager.saveProjects(self.projects)
+                        }
+                    } else {
+                        self.handleErrorSync("No response received from model")
                     }
-                } else {
-                    self.handleErrorSync("No response received from model")
                 }
             }
         }
@@ -358,21 +448,25 @@ struct ChatView: View {
     }
     
     private func handleErrorSync(_ message: String) {
-        let errorMessage = ChatMessage(
-            id: UUID(),
-            role: .assistant,
-            content: "⚠️ \(message)"
-        )
-        messages.append(errorMessage)
-        isLoading = false
-        streamedMessage = ""
+        withAnimation(.easeInOut(duration: 0.4)) {
+            let errorMessage = ChatMessage(
+                id: UUID(),
+                role: .assistant,
+                content: "⚠️ \(message)"
+            )
+            messages.append(errorMessage)
+            isLoading = false
+            streamedMessage = ""
+            responseStartTime = nil
+        }
     }
 }
 
-// MARK: - Message Components
+// MARK: - Enhanced Message Components
 
-struct MessageRowView: View {
+struct EnhancedMessageRowView: View {
     let message: ChatMessage
+    @State private var isVisible = false
     
     var body: some View {
         HStack(alignment: .top, spacing: 12) {
@@ -380,23 +474,37 @@ struct MessageRowView: View {
                 .foregroundColor(message.role == .user ? .blue : .green)
                 .font(.title3)
                 .frame(width: 24)
+                .scaleEffect(isVisible ? 1.0 : 0.8)
+                .animation(.spring(response: 0.4, dampingFraction: 0.7), value: isVisible)
             
             VStack(alignment: .leading, spacing: 4) {
                 Text(message.role == .user ? "You" : "Assistant")
                     .font(.caption)
                     .foregroundColor(.secondary)
+                    .opacity(isVisible ? 1.0 : 0.5)
                 
                 Text(message.content)
                     .frame(maxWidth: .infinity, alignment: .leading)
                     .textSelection(.enabled)
+                    .opacity(isVisible ? 1.0 : 0.8)
             }
         }
         .padding(.vertical, 4)
+        .opacity(isVisible ? 1.0 : 0.0)
+        .offset(y: isVisible ? 0 : 10)
+        .animation(.easeOut(duration: 0.4), value: isVisible)
+        .onAppear {
+            withAnimation(.easeOut(duration: 0.3).delay(0.1)) {
+                isVisible = true
+            }
+        }
     }
 }
 
 struct StreamingMessageView: View {
     let content: String
+    let isComplete: Bool
+    @State private var cursorVisible = true
     
     var body: some View {
         HStack(alignment: .top, spacing: 12) {
@@ -411,22 +519,52 @@ struct StreamingMessageView: View {
                         .font(.caption)
                         .foregroundColor(.secondary)
                     
-                    Image(systemName: "ellipsis")
-                        .font(.caption)
-                        .foregroundColor(.green)
+                    if !isComplete {
+                        HStack(spacing: 2) {
+                            ForEach(0..<3) { index in
+                                Circle()
+                                    .fill(Color.green)
+                                    .frame(width: 4, height: 4)
+                                    .scaleEffect(cursorVisible ? 1.0 : 0.5)
+                                    .animation(
+                                        .easeInOut(duration: 0.6)
+                                        .repeatForever()
+                                        .delay(Double(index) * 0.2),
+                                        value: cursorVisible
+                                    )
+                            }
+                        }
+                    }
                 }
                 
-                Text(content)
-                    .frame(maxWidth: .infinity, alignment: .leading)
-                    .textSelection(.enabled)
+                HStack {
+                    Text(content)
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                        .textSelection(.enabled)
+                    
+                    if !isComplete && !content.isEmpty {
+                        Rectangle()
+                            .fill(Color.green)
+                            .frame(width: 2, height: 20)
+                            .opacity(cursorVisible ? 1.0 : 0.3)
+                            .animation(.easeInOut(duration: 0.8).repeatForever(), value: cursorVisible)
+                    }
+                }
             }
         }
         .padding(.vertical, 4)
+        .onAppear {
+            cursorVisible = true
+        }
     }
 }
 
-struct LoadingMessageView: View {
+struct EnhancedLoadingView: View {
     let model: String
+    let estimatedTime: Double
+    let elapsedTime: Double
+    
+    @State private var animationPhase = 0
     
     var body: some View {
         HStack(alignment: .top, spacing: 12) {
@@ -435,16 +573,53 @@ struct LoadingMessageView: View {
                 .font(.title3)
                 .frame(width: 24)
             
-            VStack(alignment: .leading, spacing: 4) {
+            VStack(alignment: .leading, spacing: 8) {
                 Text("Assistant")
                     .font(.caption)
                     .foregroundColor(.secondary)
                 
-                HStack {
-                    ProgressView()
-                        .controlSize(.small)
-                    Text("Thinking with \(model)...")
-                        .foregroundColor(.secondary)
+                HStack(spacing: 12) {
+                    // Animated thinking indicator
+                    HStack(spacing: 4) {
+                        ForEach(0..<3) { index in
+                            Circle()
+                                .fill(Color.green)
+                                .frame(width: 8, height: 8)
+                                .scaleEffect(animationPhase == index ? 1.2 : 0.8)
+                                .opacity(animationPhase == index ? 1.0 : 0.6)
+                        }
+                    }
+                    .onAppear {
+                        Timer.scheduledTimer(withTimeInterval: 0.4, repeats: true) { _ in
+                            withAnimation(.easeInOut(duration: 0.3)) {
+                                animationPhase = (animationPhase + 1) % 3
+                            }
+                        }
+                    }
+                    
+                    VStack(alignment: .leading, spacing: 2) {
+                        Text("Thinking with \(model)...")
+                            .font(.subheadline)
+                            .foregroundColor(.secondary)
+                        
+                        // Progress indicator
+                        HStack {
+                            if estimatedTime > 0 {
+                                let progress = min(elapsedTime / estimatedTime, 1.0)
+                                ProgressView(value: progress)
+                                    .progressViewStyle(LinearProgressViewStyle())
+                                    .frame(width: 100)
+                                
+                                Text("\(String(format: "%.1f", elapsedTime))s")
+                                    .font(.caption2)
+                                    .foregroundColor(.secondary)
+                            } else {
+                                ProgressView()
+                                    .progressViewStyle(CircularProgressViewStyle())
+                                    .controlSize(.small)
+                            }
+                        }
+                    }
                 }
             }
         }
@@ -452,7 +627,7 @@ struct LoadingMessageView: View {
     }
 }
 
-// MARK: - Model Picker Sheet
+// MARK: - Model Picker Sheet (Simplified for macOS)
 
 struct ModelPickerSheet: View {
     let availableModels: [DynamicModelManager.ModelInfo]
@@ -462,7 +637,6 @@ struct ModelPickerSheet: View {
     
     var body: some View {
         VStack(alignment: .leading, spacing: 20) {
-            // Header
             HStack {
                 Text("Select Model")
                     .font(.title2)
@@ -477,26 +651,65 @@ struct ModelPickerSheet: View {
             }
             
             if autoOptimizationEnabled {
-                autoOptimizationBanner
+                VStack(alignment: .leading, spacing: 8) {
+                    HStack {
+                        Image(systemName: "brain.head.profile")
+                            .foregroundColor(.green)
+                        Text("Auto-Optimization Enabled")
+                            .font(.headline)
+                    }
+                    
+                    Text("The system automatically selects the best model for each query.")
+                        .font(.caption)
+                        .foregroundColor(.secondary)
+                }
+                .padding()
+                .background(Color.green.opacity(0.1))
+                .cornerRadius(8)
             }
             
             Text("Available Models")
                 .font(.headline)
             
             if availableModels.isEmpty {
-                emptyModelsView
+                VStack(spacing: 12) {
+                    Image(systemName: "tray")
+                        .font(.system(size: 40))
+                        .foregroundColor(.secondary)
+                    Text("No models detected")
+                        .font(.headline)
+                        .foregroundColor(.secondary)
+                }
+                .frame(maxWidth: .infinity)
+                .padding(.vertical, 40)
             } else {
                 ScrollView {
                     LazyVStack(spacing: 8) {
                         ForEach(availableModels, id: \.name) { model in
-                            ModelPickerRow(
-                                model: model,
-                                isSelected: model.name == selectedModel,
-                                onSelect: {
-                                    selectedModel = model.name
-                                    dismiss()
+                            Button(action: {
+                                selectedModel = model.name
+                                dismiss()
+                            }) {
+                                HStack {
+                                    VStack(alignment: .leading) {
+                                        Text(model.name)
+                                            .font(.headline)
+                                            .foregroundColor(.primary)
+                                        Text("\(model.parameters) • \(formatSize(model.size))")
+                                            .font(.caption)
+                                            .foregroundColor(.secondary)
+                                    }
+                                    
+                                    Spacer()
+                                    
+                                    Image(systemName: selectedModel == model.name ? "checkmark.circle.fill" : "circle")
+                                        .foregroundColor(selectedModel == model.name ? .blue : .secondary)
                                 }
-                            )
+                                .padding()
+                                .background(Color.gray.opacity(0.05))
+                                .cornerRadius(8)
+                            }
+                            .buttonStyle(.plain)
                         }
                     }
                 }
@@ -505,106 +718,7 @@ struct ModelPickerSheet: View {
             Spacer()
         }
         .padding()
-        .frame(width: 500, height: 600)
-    }
-    
-    private var autoOptimizationBanner: some View {
-        VStack(alignment: .leading, spacing: 8) {
-            HStack {
-                Image(systemName: "brain.head.profile")
-                    .foregroundColor(.green)
-                Text("Auto-Optimization Enabled")
-                    .font(.headline)
-            }
-            
-            Text("The system automatically selects the best model for each query. You can still override the selection below.")
-                .font(.caption)
-                .foregroundColor(.secondary)
-        }
-        .padding()
-        .background(Color.green.opacity(0.1))
-        .cornerRadius(8)
-    }
-    
-    private var emptyModelsView: some View {
-        VStack(spacing: 12) {
-            Image(systemName: "tray")
-                .font(.system(size: 40))
-                .foregroundColor(.secondary)
-            Text("No models detected")
-                .font(.headline)
-                .foregroundColor(.secondary)
-            Text("Install models using Ollama CLI")
-                .font(.caption)
-                .foregroundColor(.secondary)
-        }
-        .frame(maxWidth: .infinity)
-        .padding(.vertical, 40)
-    }
-}
-
-struct ModelPickerRow: View {
-    let model: DynamicModelManager.ModelInfo
-    let isSelected: Bool
-    let onSelect: () -> Void
-    
-    var body: some View {
-        Button(action: onSelect) {
-            HStack {
-                VStack(alignment: .leading, spacing: 4) {
-                    HStack {
-                        Text(model.name)
-                            .font(.headline)
-                            .foregroundColor(.primary)
-                        
-                        Spacer()
-                        
-                        Text(formatSize(model.size))
-                            .font(.caption)
-                            .foregroundColor(.secondary)
-                    }
-                    
-                    HStack {
-                        Text(model.parameters)
-                            .font(.caption)
-                            .padding(.horizontal, 6)
-                            .padding(.vertical, 2)
-                            .background(Color.blue.opacity(0.2))
-                            .cornerRadius(4)
-                        
-                        if let quantization = model.quantization {
-                            Text(quantization)
-                                .font(.caption)
-                                .padding(.horizontal, 6)
-                                .padding(.vertical, 2)
-                                .background(Color.green.opacity(0.2))
-                                .cornerRadius(4)
-                        }
-                        
-                        Text(model.specialty?.rawValue.capitalized ?? "General")
-                            .font(.caption)
-                            .padding(.horizontal, 6)
-                            .padding(.vertical, 2)
-                            .background(Color.purple.opacity(0.2))
-                            .cornerRadius(4)
-                        
-                        Spacer()
-                    }
-                }
-                
-                Image(systemName: isSelected ? "checkmark.circle.fill" : "circle")
-                    .foregroundColor(isSelected ? .blue : .secondary)
-                    .font(.title2)
-            }
-            .padding()
-            .background(Color.gray.opacity(0.05))
-            .cornerRadius(8)
-            .overlay(
-                RoundedRectangle(cornerRadius: 8)
-                    .stroke(isSelected ? Color.blue : Color.clear, lineWidth: 2)
-            )
-        }
-        .buttonStyle(.plain)
+        .frame(width: 400, height: 500)
     }
     
     private func formatSize(_ sizeInMB: Int) -> String {
