@@ -13,9 +13,11 @@ struct ChatView: View {
     @State private var responseStartTime: Date?
     @State private var estimatedResponseTime: Double = 3.0
     @State private var isTyping = false
+    @State private var currentResponseLayer: IntelligentResponsePipeline.ResponseLayer = .none
     
     @StateObject private var ollamaService = OllamaService()
     @StateObject private var modelManager = DynamicModelManager()
+    @StateObject private var intelligentPipeline = IntelligentResponsePipeline()
     
     var body: some View {
         VStack(spacing: 0) {
@@ -24,9 +26,9 @@ struct ChatView: View {
                 connectionStatusBar
             }
             
-            // Model indicator bar with response speed info
+            // Enhanced model indicator bar with pipeline status
             if !modelManager.availableModels.isEmpty {
-                modelIndicatorBar
+                enhancedModelIndicatorBar
             }
             
             // Chat messages with enhanced visual feedback
@@ -36,17 +38,19 @@ struct ChatView: View {
                         EnhancedMessageRowView(message: message)
                     }
                     
-                    // Enhanced streaming message display
+                    // Enhanced streaming message display with layer indication
                     if isLoading {
                         if streamedMessage.isEmpty {
-                            EnhancedLoadingView(
+                            IntelligentLoadingView(
                                 model: currentModel,
+                                layer: currentResponseLayer,
                                 estimatedTime: estimatedResponseTime,
                                 elapsedTime: responseStartTime.map { Date().timeIntervalSince($0) } ?? 0
                             )
                         } else {
-                            StreamingMessageView(
+                            IntelligentStreamingView(
                                 content: streamedMessage,
+                                layer: currentResponseLayer,
                                 isComplete: false
                             )
                         }
@@ -57,8 +61,8 @@ struct ChatView: View {
             
             Divider()
             
-            // Enhanced input area with immediate feedback
-            enhancedInputArea
+            // Enhanced input area with pipeline predictions
+            intelligentInputArea
         }
         .navigationTitle(selectedProject?.title ?? "No Project")
         .toolbar {
@@ -80,7 +84,7 @@ struct ChatView: View {
         }
         .onAppear {
             loadMessages()
-            setupInitialState()
+            setupIntelligentState()
         }
         .onChange(of: selectedProject) { _ in
             loadMessages()
@@ -114,15 +118,29 @@ struct ChatView: View {
         .background(Color.orange.opacity(0.1))
     }
     
-    // MARK: - Enhanced Model Indicator Bar
+    // MARK: - Enhanced Model Indicator Bar with Pipeline Status
     
-    private var modelIndicatorBar: some View {
+    private var enhancedModelIndicatorBar: some View {
         HStack {
+            // Pipeline status indicator
+            HStack(spacing: 4) {
+                Image(systemName: pipelineStatusIcon)
+                    .foregroundColor(pipelineStatusColor)
+                    .font(.caption)
+                
+                Text(pipelineStatusText)
+                    .font(.caption2)
+                    .foregroundColor(pipelineStatusColor)
+            }
+            
+            Divider()
+                .frame(height: 12)
+            
             Image(systemName: "cpu")
                 .foregroundColor(.blue)
                 .font(.caption)
             
-            Text("Using: \(currentModel)")
+            Text("Model: \(currentModel)")
                 .font(.caption)
                 .foregroundColor(.secondary)
             
@@ -130,7 +148,7 @@ struct ChatView: View {
                 Image(systemName: "brain.head.profile")
                     .foregroundColor(.green)
                     .font(.caption)
-                Text("Auto")
+                Text("Smart")
                     .font(.caption2)
                     .foregroundColor(.green)
                     .padding(.horizontal, 4)
@@ -170,18 +188,18 @@ struct ChatView: View {
         .background(Color.gray.opacity(0.05))
     }
     
-    // MARK: - Enhanced Input Area
+    // MARK: - Intelligent Input Area
     
-    private var enhancedInputArea: some View {
+    private var intelligentInputArea: some View {
         VStack(spacing: 8) {
-            // Show typing indicator when user is composing
+            // Show intelligent prediction when user is composing
             if isTyping && !inputText.isEmpty {
                 HStack {
-                    Image(systemName: "ellipsis")
-                        .foregroundColor(.blue)
-                    Text("Analyzing your message...")
+                    Image(systemName: "brain.head.profile")
+                        .foregroundColor(.purple)
+                    Text(getInputPrediction())
                         .font(.caption)
-                        .foregroundColor(.blue)
+                        .foregroundColor(.purple)
                     Spacer()
                 }
                 .padding(.horizontal)
@@ -193,21 +211,20 @@ struct ChatView: View {
                     .textFieldStyle(RoundedBorderTextFieldStyle())
                     .lineLimit(1...4)
                     .onChange(of: inputText) { newValue in
-                        handleTextChange(newValue)
+                        handleIntelligentTextChange(newValue)
                     }
                     .onSubmit {
                         if canSendMessage {
-                            sendMessage()
+                            sendIntelligentMessage()
                         }
                     }
                     .disabled(!ollamaService.isConnected)
                 
                 Button(action: {
                     if isLoading {
-                        // TODO: Implement stop functionality
-                        print("Stop button pressed")
+                        stopGeneration()
                     } else {
-                        sendMessage()
+                        sendIntelligentMessage()
                     }
                 }) {
                     ZStack {
@@ -234,12 +251,40 @@ struct ChatView: View {
         ollamaService.isConnected
     }
     
+    private var pipelineStatusIcon: String {
+        switch currentResponseLayer {
+        case .none: return "circle"
+        case .instant: return "bolt.fill"
+        case .fast: return "hare.fill"
+        case .intelligent: return "brain.head.profile"
+        }
+    }
+    
+    private var pipelineStatusColor: Color {
+        switch currentResponseLayer {
+        case .none: return .secondary
+        case .instant: return .yellow
+        case .fast: return .orange
+        case .intelligent: return .purple
+        }
+    }
+    
+    private var pipelineStatusText: String {
+        switch currentResponseLayer {
+        case .none: return "Ready"
+        case .instant: return "Instant"
+        case .fast: return "Fast"
+        case .intelligent: return "Deep"
+        }
+    }
+    
     // MARK: - Helper Methods
     
-    private func setupInitialState() {
+    private func setupIntelligentState() {
         Task {
             await ollamaService.checkConnection()
             await modelManager.refreshAvailableModels()
+            await intelligentPipeline.startBackgroundOptimization()
             setInitialModel()
         }
     }
@@ -259,29 +304,63 @@ struct ChatView: View {
         }
     }
     
-    private func handleTextChange(_ text: String) {
+    private func handleIntelligentTextChange(_ text: String) {
         // Show typing indicator for longer messages
         withAnimation(.easeInOut(duration: 0.2)) {
-            isTyping = text.count > 10
+            isTyping = text.count > 5
         }
         
-        // Estimate response time based on message complexity
+        // Estimate response time based on message complexity and layer prediction
         if text.count > 0 {
-            estimatedResponseTime = estimateResponseTime(for: text)
+            estimatedResponseTime = estimateIntelligentResponseTime(for: text)
         }
     }
     
-    private func estimateResponseTime(for text: String) -> Double {
-        let baseTime = 2.0
-        let lengthFactor = Double(text.count) / 100.0
-        let complexityFactor = text.lowercased().contains("code") ? 2.0 : 1.0
+    private func getInputPrediction() -> String {
+        let query = inputText.lowercased()
         
-        return min(baseTime + lengthFactor * complexityFactor, 15.0)
+        if query.contains("hello") || query.contains("hi") {
+            return "→ Instant response ready"
+        }
+        
+        if query.contains("help") || query.contains("what") {
+            return "→ Quick answer available"
+        }
+        
+        if query.contains("code") || query.contains("function") {
+            return "→ Programming mode activated"
+        }
+        
+        if query.count > 50 {
+            return "→ Deep analysis mode"
+        }
+        
+        return "→ Smart routing enabled"
     }
     
-    // MARK: - Message Sending with Enhanced Feedback
+    private func estimateIntelligentResponseTime(for text: String) -> Double {
+        let query = text.lowercased()
+        
+        // Instant layer predictions
+        if query.contains("hello") || query.contains("hi") || query.contains("thanks") {
+            return 0.05
+        }
+        
+        // Fast layer predictions
+        if query.count < 20 && !query.contains("explain") && !query.contains("complex") {
+            return 0.8
+        }
+        
+        // Intelligent layer predictions
+        let complexityFactor = query.contains("explain") || query.contains("analyze") ? 2.0 : 1.0
+        let lengthFactor = Double(text.count) / 100.0
+        
+        return min(2.0 + lengthFactor * complexityFactor, 8.0)
+    }
     
-    private func sendMessage() {
+    // MARK: - Intelligent Message Sending
+    
+    private func sendIntelligentMessage() {
         guard let selectedProject = selectedProject else { return }
         guard canSendMessage else { return }
         
@@ -296,40 +375,20 @@ struct ChatView: View {
             isTyping = false
             streamedMessage = ""
             responseStartTime = Date()
+            currentResponseLayer = .none
         }
         
         Task {
-            // Select optimal model if auto-optimization is enabled
-            if modelManager.autoOptimizationEnabled {
-                let optimalModel = await selectOptimalModel(for: messageToSend)
-                await MainActor.run {
-                    currentModel = optimalModel
-                }
-            }
-            
-            // Ensure model is available
-            guard await ollamaService.isModelAvailable(currentModel) else {
-                await handleError("Model '\(currentModel)' is not installed")
-                return
-            }
-            
-            // Generate response
-            await generateResponse(message: messageToSend, model: currentModel)
+            await processIntelligentResponse(messageToSend, selectedProject: selectedProject)
         }
     }
     
-    private func generateResponse(message: String, model: String) async {
-        guard let selectedProject = selectedProject else { return }
-        
+    private func processIntelligentResponse(_ message: String, selectedProject: Project) async {
         let context = Array(messages.prefix(messages.count - 1))
         
-        for await response in ollamaService.generateResponse(
-            prompt: message,
-            model: model,
-            context: context,
-            stream: true
-        ) {
+        for await response in intelligentPipeline.processQuery(message, context: context) {
             await MainActor.run {
+                self.currentResponseLayer = response.layer
                 self.streamedMessage = response.content
                 
                 if response.isComplete {
@@ -344,6 +403,7 @@ struct ChatView: View {
                         self.streamedMessage = ""
                         self.isLoading = false
                         self.responseStartTime = nil
+                        self.currentResponseLayer = .none
                     }
                     
                     // Save to project
@@ -354,89 +414,15 @@ struct ChatView: View {
                 }
             }
         }
-        
-        // Handle case where streaming finishes without completion
-        await MainActor.run {
-            if self.isLoading {
-                withAnimation(.easeInOut(duration: 0.4)) {
-                    self.isLoading = false
-                    self.responseStartTime = nil
-                    
-                    if !self.streamedMessage.isEmpty {
-                        let aiMessage = ChatMessage(
-                            id: UUID(),
-                            role: .assistant,
-                            content: self.streamedMessage
-                        )
-                        self.messages.append(aiMessage)
-                        self.streamedMessage = ""
-                        
-                        // Save to project
-                        if let index = self.projects.firstIndex(where: { $0.id == selectedProject.id }) {
-                            self.projects[index].chats = self.messages
-                            PersistenceManager.saveProjects(self.projects)
-                        }
-                    } else {
-                        self.handleErrorSync("No response received from model")
-                    }
-                }
-            }
-        }
     }
     
-    private func selectOptimalModel(for message: String) async -> String {
-        let complexity = analyzeQueryComplexity(message)
-        let domain = analyzeQueryDomain(message)
-        
-        let optimalModel = await modelManager.selectOptimalModel(
-            for: message,
-            complexity: complexity,
-            domain: domain,
-            userOverride: modelManager.autoOptimizationEnabled ? nil : currentModel
-        )
-        
-        return optimalModel.name
-    }
-    
-    private func analyzeQueryComplexity(_ message: String) -> QueryComplexity {
-        let messageLength = message.count
-        let codePatterns = ["def ", "function", "class ", "import", "```", "console.log", "print("]
-        let complexPatterns = ["architecture", "design pattern", "algorithm", "optimize", "refactor"]
-        
-        if complexPatterns.contains(where: message.lowercased().contains) {
-            return .complex
+    private func stopGeneration() {
+        withAnimation(.easeInOut(duration: 0.3)) {
+            isLoading = false
+            streamedMessage = ""
+            responseStartTime = nil
+            currentResponseLayer = .none
         }
-        
-        if codePatterns.contains(where: message.contains) {
-            return .standard
-        }
-        
-        return messageLength > 100 ? .standard : .simple
-    }
-    
-    private func analyzeQueryDomain(_ message: String) -> QueryDomain {
-        let messageLower = message.lowercased()
-        
-        if messageLower.contains("code") || messageLower.contains("function") ||
-           messageLower.contains("debug") || messageLower.contains("error") {
-            if messageLower.contains("change") || messageLower.contains("modify") ||
-               messageLower.contains("update") || messageLower.contains("fix") {
-                return .codeIteration
-            }
-            return .codeGeneration
-        }
-        
-        if messageLower.contains("math") || messageLower.contains("calculate") ||
-           messageLower.contains("equation") || messageLower.contains("formula") {
-            return .mathematics
-        }
-        
-        if messageLower.contains("story") || messageLower.contains("write") ||
-           messageLower.contains("creative") || messageLower.contains("poem") {
-            return .creativeWriting
-        }
-        
-        return .generalChat
     }
     
     // MARK: - Error Handling
@@ -458,11 +444,12 @@ struct ChatView: View {
             isLoading = false
             streamedMessage = ""
             responseStartTime = nil
+            currentResponseLayer = .none
         }
     }
 }
 
-// MARK: - Enhanced Message Components
+// MARK: - Enhanced Message Components for Pipeline
 
 struct EnhancedMessageRowView: View {
     let message: ChatMessage
@@ -501,8 +488,9 @@ struct EnhancedMessageRowView: View {
     }
 }
 
-struct StreamingMessageView: View {
+struct IntelligentStreamingView: View {
     let content: String
+    let layer: IntelligentResponsePipeline.ResponseLayer
     let isComplete: Bool
     @State private var cursorVisible = true
     
@@ -519,11 +507,20 @@ struct StreamingMessageView: View {
                         .font(.caption)
                         .foregroundColor(.secondary)
                     
+                    // Layer indicator
+                    Text(layerText)
+                        .font(.caption2)
+                        .foregroundColor(layerColor)
+                        .padding(.horizontal, 4)
+                        .padding(.vertical, 1)
+                        .background(layerColor.opacity(0.2))
+                        .cornerRadius(3)
+                    
                     if !isComplete {
                         HStack(spacing: 2) {
                             ForEach(0..<3) { index in
                                 Circle()
-                                    .fill(Color.green)
+                                    .fill(layerColor)
                                     .frame(width: 4, height: 4)
                                     .scaleEffect(cursorVisible ? 1.0 : 0.5)
                                     .animation(
@@ -544,7 +541,7 @@ struct StreamingMessageView: View {
                     
                     if !isComplete && !content.isEmpty {
                         Rectangle()
-                            .fill(Color.green)
+                            .fill(layerColor)
                             .frame(width: 2, height: 20)
                             .opacity(cursorVisible ? 1.0 : 0.3)
                             .animation(.easeInOut(duration: 0.8).repeatForever(), value: cursorVisible)
@@ -557,10 +554,29 @@ struct StreamingMessageView: View {
             cursorVisible = true
         }
     }
+    
+    private var layerText: String {
+        switch layer {
+        case .none: return "Processing"
+        case .instant: return "Instant"
+        case .fast: return "Fast"
+        case .intelligent: return "Deep"
+        }
+    }
+    
+    private var layerColor: Color {
+        switch layer {
+        case .none: return .secondary
+        case .instant: return .yellow
+        case .fast: return .orange
+        case .intelligent: return .purple
+        }
+    }
 }
 
-struct EnhancedLoadingView: View {
+struct IntelligentLoadingView: View {
     let model: String
+    let layer: IntelligentResponsePipeline.ResponseLayer
     let estimatedTime: Double
     let elapsedTime: Double
     
@@ -574,16 +590,26 @@ struct EnhancedLoadingView: View {
                 .frame(width: 24)
             
             VStack(alignment: .leading, spacing: 8) {
-                Text("Assistant")
-                    .font(.caption)
-                    .foregroundColor(.secondary)
+                HStack {
+                    Text("Assistant")
+                        .font(.caption)
+                        .foregroundColor(.secondary)
+                    
+                    Text(layerText)
+                        .font(.caption2)
+                        .foregroundColor(layerColor)
+                        .padding(.horizontal, 4)
+                        .padding(.vertical, 1)
+                        .background(layerColor.opacity(0.2))
+                        .cornerRadius(3)
+                }
                 
                 HStack(spacing: 12) {
                     // Animated thinking indicator
                     HStack(spacing: 4) {
                         ForEach(0..<3) { index in
                             Circle()
-                                .fill(Color.green)
+                                .fill(layerColor)
                                 .frame(width: 8, height: 8)
                                 .scaleEffect(animationPhase == index ? 1.2 : 0.8)
                                 .opacity(animationPhase == index ? 1.0 : 0.6)
@@ -598,13 +624,13 @@ struct EnhancedLoadingView: View {
                     }
                     
                     VStack(alignment: .leading, spacing: 2) {
-                        Text("Thinking with \(model)...")
+                        Text(loadingText)
                             .font(.subheadline)
                             .foregroundColor(.secondary)
                         
                         // Progress indicator
                         HStack {
-                            if estimatedTime > 0 {
+                            if estimatedTime > 0 && layer != .instant {
                                 let progress = min(elapsedTime / estimatedTime, 1.0)
                                 ProgressView(value: progress)
                                     .progressViewStyle(LinearProgressViewStyle())
@@ -613,10 +639,6 @@ struct EnhancedLoadingView: View {
                                 Text("\(String(format: "%.1f", elapsedTime))s")
                                     .font(.caption2)
                                     .foregroundColor(.secondary)
-                            } else {
-                                ProgressView()
-                                    .progressViewStyle(CircularProgressViewStyle())
-                                    .controlSize(.small)
                             }
                         }
                     }
@@ -625,9 +647,36 @@ struct EnhancedLoadingView: View {
         }
         .padding(.vertical, 4)
     }
+    
+    private var layerText: String {
+        switch layer {
+        case .none: return "Routing"
+        case .instant: return "Instant"
+        case .fast: return "Fast"
+        case .intelligent: return "Deep"
+        }
+    }
+    
+    private var layerColor: Color {
+        switch layer {
+        case .none: return .secondary
+        case .instant: return .yellow
+        case .fast: return .orange
+        case .intelligent: return .purple
+        }
+    }
+    
+    private var loadingText: String {
+        switch layer {
+        case .none: return "Analyzing query..."
+        case .instant: return "Processing instantly..."
+        case .fast: return "Using fast model..."
+        case .intelligent: return "Deep thinking with \(model)..."
+        }
+    }
 }
 
-// MARK: - Model Picker Sheet (Simplified for macOS)
+// MARK: - Model Picker Sheet (Simplified for Pipeline)
 
 struct ModelPickerSheet: View {
     let availableModels: [DynamicModelManager.ModelInfo]
@@ -650,23 +699,21 @@ struct ModelPickerSheet: View {
                 .buttonStyle(.borderedProminent)
             }
             
-            if autoOptimizationEnabled {
-                VStack(alignment: .leading, spacing: 8) {
-                    HStack {
-                        Image(systemName: "brain.head.profile")
-                            .foregroundColor(.green)
-                        Text("Auto-Optimization Enabled")
-                            .font(.headline)
-                    }
-                    
-                    Text("The system automatically selects the best model for each query.")
-                        .font(.caption)
-                        .foregroundColor(.secondary)
+            VStack(alignment: .leading, spacing: 8) {
+                HStack {
+                    Image(systemName: "brain.head.profile")
+                        .foregroundColor(.purple)
+                    Text("Intelligent Pipeline Active")
+                        .font(.headline)
                 }
-                .padding()
-                .background(Color.green.opacity(0.1))
-                .cornerRadius(8)
+                
+                Text("The system uses multiple models intelligently. This setting controls the primary model for complex queries.")
+                    .font(.caption)
+                    .foregroundColor(.secondary)
             }
+            .padding()
+            .background(Color.purple.opacity(0.1))
+            .cornerRadius(8)
             
             Text("Available Models")
                 .font(.headline)
