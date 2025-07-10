@@ -7,17 +7,33 @@
       <BreakpointProxy
          BreakpointExtensionID = "Xcode.Breakpoint.FileBreakpoint">
          <BreakpointContent
-            uuid = "32B3B1FD-3E9F-49E1-8E0B-35066D4E32A5"
-            shouldBeEnabled = "Yes"
+            uuid = "9D275EB7-41B6-4AF9-97D4-F41A9C7DE311"
+            shouldBeEnabled = "No"
             ignoreCount = "0"
             continueAfterRunningActions = "No"
-            filePath = "PrivateLLMCompanion/Services/StreamingDelegate.swift"
+            filePath = "PrivateLLMCompanion/Networking/StreamingDelegate.swift"
             startingColumnNumber = "9223372036854775807"
             endingColumnNumber = "9223372036854775807"
-            startingLineNumber = "25"
-            endingLineNumber = "25"
-            landmarkName = "urlSession(_:dataTask:didReceive:)"
-            landmarkType = "7">
+            startingLineNumber = "4"
+            endingLineNumber = "4"
+            landmarkName = "StreamingDelegate"
+            landmarkType = "3">
+         </BreakpointContent>
+      </BreakpointProxy>
+      <BreakpointProxy
+         BreakpointExtensionID = "Xcode.Breakpoint.FileBreakpoint">
+         <BreakpointContent
+            uuid = "BCC25351-D5ED-4AF9-B91F-67228843ABAA"
+            shouldBeEnabled = "No"
+            ignoreCount = "0"
+            continueAfterRunningActions = "No"
+            filePath = "PrivateLLMCompanion/Networking/StreamingDelegate.swift"
+            startingColumnNumber = "9223372036854775807"
+            endingColumnNumber = "9223372036854775807"
+            startingLineNumber = "3"
+            endingLineNumber = "3"
+            landmarkName = "StreamingDelegate"
+            landmarkType = "3">
          </BreakpointContent>
       </BreakpointProxy>
    </Breakpoints>

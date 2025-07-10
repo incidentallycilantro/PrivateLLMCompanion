@@ -37,7 +37,6 @@ struct ChatView: View {
                             }
                         }
                         
-                        // Invisible anchor for scrolling
                         Color.clear.frame(height: 1).id(scrollID)
                     }
                     .padding()
@@ -87,7 +86,7 @@ struct ChatView: View {
         guard let selectedProject = selectedProject else { return }
         
         if isLoading {
-            // TODO: Implement stop generation logic
+            // TODO: Implement stop generation
             return
         }
         
@@ -102,22 +101,17 @@ struct ChatView: View {
         streamedMessage = ""
         scrollID = UUID()
         
-        // Build conversation context from recent messages
+        // Build conversation context
         let conversationContext = buildConversationContext(from: messages)
         
         let payload: [String: Any] = [
             "model": "mistral",
             "prompt": conversationContext,
-            "stream": true,
-            "options": [
-                "temperature": 0.7,
-                "top_p": 0.9,
-                "top_k": 40
-            ]
+            "stream": true
         ]
         
         guard let jsonData = try? JSONSerialization.data(withJSONObject: payload) else {
-            handleErrorSync("Failed to encode request")
+            handleError("Failed to encode request")
             return
         }
         
@@ -126,90 +120,76 @@ struct ChatView: View {
         request.httpBody = jsonData
         request.addValue("application/json", forHTTPHeaderField: "Content-Type")
         
-        let delegate = StreamingDelegate(
-            onReceive: { [weak self] chunk in
-                DispatchQueue.main.async {
-                    guard let self = self else { return }
-                    withAnimation(.easeIn(duration: 0.1)) {
-                        self.streamedMessage += chunk
+        // Use URLSession.shared with simple completion handler - no delegate needed
+        let task = URLSession.shared.dataTask(with: request) { data, response, error in
+            DispatchQueue.main.async {
+                if let error = error {
+                    self.handleError("Network error: \(error.localizedDescription)")
+                    return
+                }
+                
+                guard let data = data else {
+                    self.handleError("No data received")
+                    return
+                }
+                
+                // For now, handle as non-streaming response
+                do {
+                    if let json = try JSONSerialization.jsonObject(with: data) as? [String: Any],
+                       let response = json["response"] as? String {
+                        
+                        let aiMessage = ChatMessage(
+                            id: UUID(),
+                            role: .assistant,
+                            content: response
+                        )
+                        
+                        withAnimation(.easeInOut(duration: 0.3)) {
+                            self.messages.append(aiMessage)
+                        }
+                        
+                        self.isLoading = false
+                        self.streamedMessage = ""
+                        
+                        // Save to project
+                        if let index = self.projects.firstIndex(where: { $0.id == selectedProject.id }) {
+                            self.projects[index].chats = self.messages
+                            PersistenceManager.saveProjects(self.projects)
+                        }
+                    } else {
+                        self.handleError("Invalid response format")
                     }
-                }
-            },
-            onComplete: { [weak self] in
-                DispatchQueue.main.async {
-                    guard let self = self else { return }
-                    self.finalizeAssistantResponse(for: selectedProject)
-                }
-            },
-            onError: { [weak self] error in
-                DispatchQueue.main.async {
-                    guard let self = self else { return }
-                    self.handleErrorSync("Error: \(error.localizedDescription)")
+                } catch {
+                    self.handleError("Failed to parse response: \(error.localizedDescription)")
                 }
             }
-        )
+        }
         
-        let session = URLSession(configuration: .default, delegate: delegate, delegateQueue: nil)
-        let task = session.dataTask(with: request)
         task.resume()
     }
     
     private func buildConversationContext(from messages: [ChatMessage]) -> String {
-        // Take the last 10 messages to stay within context window limits
         let recentMessages = Array(messages.suffix(10))
         
         var context = ""
-        
-        // Add system instruction
         context += "You are a helpful AI assistant. Respond naturally and conversationally based on the chat history.\n\n"
         
-        // Add conversation history
         for message in recentMessages {
             switch message.role {
             case .user:
                 context += "Human: \(message.content)\n\n"
             case .assistant:
                 context += "Assistant: \(message.content)\n\n"
+            case .system:
+                context += "System: \(message.content)\n\n"
             }
         }
         
-        // Add current response prompt
         context += "Assistant: "
-        
         return context
     }
     
-    private func finalizeAssistantResponse(for selectedProject: Project) {
-        let finalContent = streamedMessage.trimmingCharacters(in: .whitespacesAndNewlines)
-        
-        // Don't save empty responses
-        guard !finalContent.isEmpty else {
-            isLoading = false
-            streamedMessage = ""
-            return
-        }
-        
-        let aiMessage = ChatMessage(
-            id: UUID(),
-            role: .assistant,
-            content: finalContent
-        )
-        
-        withAnimation(.easeInOut(duration: 0.3)) {
-            messages.append(aiMessage)
-        }
-        
-        isLoading = false
-        streamedMessage = ""
-        
-        // Save to project
-        if let index = projects.firstIndex(where: { $0.id == selectedProject.id }) {
-            projects[index].chats = messages
-            PersistenceManager.saveProjects(projects)
-        }
-    }
-    
-    private func handleErrorSync(_ message: String) {
+    private func handleError(_ message: String) {
         withAnimation(.easeInOut(duration: 0.4)) {
             let errorMessage = ChatMessage(
                 id: UUID(),
