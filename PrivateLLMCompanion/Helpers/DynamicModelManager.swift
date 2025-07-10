@@ -241,7 +241,7 @@ class DynamicModelManager: ObservableObject {
     private func createFallbackModel() -> ModelInfo {
         // Emergency fallback if no models are suitable
         return ModelInfo(
-            name: "mistral", // Assume mistral as safe default
+            name: "mistral:latest", // Assume mistral as safe default
             size: 4000,
             capabilities: [.basicQA, .codeGeneration],
             loadTime: 8.0,

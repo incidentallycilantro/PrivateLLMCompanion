@@ -680,7 +680,7 @@ struct ModelInstallationSheet: View {
         ("llama3:8b", "Meta's latest Llama 3 - 8B parameters", "General purpose, very capable", "~5GB"),
         ("codellama:7b", "Code-specialized Llama model", "Best for programming tasks", "~4GB"),
         ("phi3:mini", "Microsoft's compact model", "Fast responses, basic tasks", "~2GB"),
-        ("mistral:7b", "Mistral AI's flagship model", "Balanced performance and efficiency", "~4GB"),
+        ("mistral:latest", "Mistral AI's flagship model", "Balanced performance and efficiency", "~4GB"),
         ("gemma:7b", "Google's open model", "Strong reasoning capabilities", "~5GB")
     ]
     
