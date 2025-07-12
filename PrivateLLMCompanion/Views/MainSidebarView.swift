@@ -491,7 +491,7 @@ struct MainSidebarView: View {
         switch suggestion.type {
         case .createProject, .graduateConversation:
             if let projectName = suggestion.suggestedProjectName {
-                _ = quickChatManager.graduateToProject(
+                let newProject = quickChatManager.graduateToProject(
                     projectName: projectName,
                     description: "Created from Quick Chat conversation",
                     projects: &projects
