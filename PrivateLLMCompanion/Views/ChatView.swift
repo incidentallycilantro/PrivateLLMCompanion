@@ -3,21 +3,63 @@ import SwiftUI
 struct ChatView: View {
     @Binding var projects: [Project]
     @Binding var selectedProject: Project?
-    
     @State private var messages: [ChatMessage] = []
     @State private var inputText: String = ""
     @State private var isLoading = false
     @State private var streamedMessage: String = ""
+<<<<<<< HEAD
+    @State private var scrollID = UUID()
+    
+    private let ollamaEndpoint = URL(string: "http://127.0.0.1:11434/api/generate")!
+    
+    var body: some View {
+        VStack {
+            ScrollViewReader { proxy in
+                ScrollView {
+                    LazyVStack(alignment: .leading, spacing: 16) {
+                        ForEach(messages) { message in
+                            MessageRowView(message: message)
+                                .id(message.id)
+                        }
+                        
+                        if isLoading {
+                            if streamedMessage.isEmpty {
+                                LoadingIndicatorView()
+                                    .id(scrollID)
+                            } else {
+                                MessageRowView(
+                                    message: ChatMessage(
+                                        id: UUID(),
+                                        role: .assistant,
+                                        content: streamedMessage
+                                    )
+                                )
+                                .id(scrollID)
+                            }
+                        }
+                        
+                        Color.clear.frame(height: 1).id(scrollID)
+                    }
+                    .padding()
+                }
+                .onChange(of: streamedMessage) { _ in
+                    withAnimation(.easeOut(duration: 0.3)) {
+                        proxy.scrollTo(scrollID, anchor: .bottom)
+                    }
+                }
+                .onChange(of: messages.count) { _ in
+                    DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) {
+                        withAnimation(.easeOut(duration: 0.3)) {
+                            proxy.scrollTo(scrollID, anchor: .bottom)
+=======
     @State private var currentModel: String = "mistral:latest"
     @State private var showingModelPicker = false
     @State private var responseStartTime: Date?
     @State private var estimatedResponseTime: Double = 3.0
     @State private var isTyping = false
-    @State private var currentResponseLayer: IntelligentResponsePipeline.ResponseLayer = .none
     
     @StateObject private var ollamaService = OllamaService()
     @StateObject private var modelManager = DynamicModelManager()
-    @StateObject private var intelligentPipeline = IntelligentResponsePipeline()
     
     var body: some View {
         VStack(spacing: 0) {
@@ -26,9 +68,9 @@ struct ChatView: View {
                 connectionStatusBar
             }
             
-            // Enhanced model indicator bar with pipeline status
+            // Model indicator bar with response speed info
             if !modelManager.availableModels.isEmpty {
-                enhancedModelIndicatorBar
+                modelIndicatorBar
             }
             
             // Chat messages with enhanced visual feedback
@@ -38,31 +80,37 @@ struct ChatView: View {
                         EnhancedMessageRowView(message: message)
                     }
                     
-                    // Enhanced streaming message display with layer indication
+                    // Enhanced streaming message display
                     if isLoading {
                         if streamedMessage.isEmpty {
-                            IntelligentLoadingView(
+                            EnhancedLoadingView(
                                 model: currentModel,
-                                layer: currentResponseLayer,
                                 estimatedTime: estimatedResponseTime,
                                 elapsedTime: responseStartTime.map { Date().timeIntervalSince($0) } ?? 0
                             )
                         } else {
-                            IntelligentStreamingView(
+                            StreamingMessageView(
                                 content: streamedMessage,
-                                layer: currentResponseLayer,
                                 isComplete: false
                             )
+>>>>>>> parent of 78b3861 (Implement Intelligent Response Pipeline - Eliminate AI response delays with multi-layer intelligence system)
                         }
                     }
                 }
-                .padding()
             }
             
             Divider()
             
-            // Enhanced input area with pipeline predictions
-            intelligentInputArea
+<<<<<<< HEAD
+            HStack(spacing: 12) {
+                TextField("Type your message...", text: $inputText, axis: .vertical)
+                    .textFieldStyle(RoundedBorderTextFieldStyle())
+                    .lineLimit(1...4)
+                    .onSubmit {
+                        if !inputText.trimmingCharacters(in: .whitespaces).isEmpty {
+=======
+            // Enhanced input area with immediate feedback
+            enhancedInputArea
         }
         .navigationTitle(selectedProject?.title ?? "No Project")
         .toolbar {
@@ -84,7 +132,7 @@ struct ChatView: View {
         }
         .onAppear {
             loadMessages()
-            setupIntelligentState()
+            setupInitialState()
         }
         .onChange(of: selectedProject) { _ in
             loadMessages()
@@ -118,29 +166,15 @@ struct ChatView: View {
         .background(Color.orange.opacity(0.1))
     }
     
-    // MARK: - Enhanced Model Indicator Bar with Pipeline Status
+    // MARK: - Enhanced Model Indicator Bar
     
-    private var enhancedModelIndicatorBar: some View {
+    private var modelIndicatorBar: some View {
         HStack {
-            // Pipeline status indicator
-            HStack(spacing: 4) {
-                Image(systemName: pipelineStatusIcon)
-                    .foregroundColor(pipelineStatusColor)
-                    .font(.caption)
-                
-                Text(pipelineStatusText)
-                    .font(.caption2)
-                    .foregroundColor(pipelineStatusColor)
-            }
-            
-            Divider()
-                .frame(height: 12)
-            
             Image(systemName: "cpu")
                 .foregroundColor(.blue)
                 .font(.caption)
             
-            Text("Model: \(currentModel)")
+            Text("Using: \(currentModel)")
                 .font(.caption)
                 .foregroundColor(.secondary)
             
@@ -148,7 +182,7 @@ struct ChatView: View {
                 Image(systemName: "brain.head.profile")
                     .foregroundColor(.green)
                     .font(.caption)
-                Text("Smart")
+                Text("Auto")
                     .font(.caption2)
                     .foregroundColor(.green)
                     .padding(.horizontal, 4)
@@ -188,18 +222,18 @@ struct ChatView: View {
         .background(Color.gray.opacity(0.05))
     }
     
-    // MARK: - Intelligent Input Area
+    // MARK: - Enhanced Input Area
     
-    private var intelligentInputArea: some View {
+    private var enhancedInputArea: some View {
         VStack(spacing: 8) {
-            // Show intelligent prediction when user is composing
+            // Show typing indicator when user is composing
             if isTyping && !inputText.isEmpty {
                 HStack {
-                    Image(systemName: "brain.head.profile")
-                        .foregroundColor(.purple)
-                    Text(getInputPrediction())
+                    Image(systemName: "ellipsis")
+                        .foregroundColor(.blue)
+                    Text("Analyzing your message...")
                         .font(.caption)
-                        .foregroundColor(.purple)
+                        .foregroundColor(.blue)
                     Spacer()
                 }
                 .padding(.horizontal)
@@ -211,20 +245,27 @@ struct ChatView: View {
                     .textFieldStyle(RoundedBorderTextFieldStyle())
                     .lineLimit(1...4)
                     .onChange(of: inputText) { newValue in
-                        handleIntelligentTextChange(newValue)
+                        handleTextChange(newValue)
                     }
                     .onSubmit {
                         if canSendMessage {
-                            sendIntelligentMessage()
+>>>>>>> parent of 78b3861 (Implement Intelligent Response Pipeline - Eliminate AI response delays with multi-layer intelligence system)
+                            sendMessage()
                         }
                     }
-                    .disabled(!ollamaService.isConnected)
                 
+<<<<<<< HEAD
+                Button(action: sendMessage) {
+                    Image(systemName: isLoading ? "stop.circle.fill" : "paperplane.fill")
+                        .foregroundColor(isLoading ? .red : .blue)
+                        .font(.title2)
+=======
                 Button(action: {
                     if isLoading {
-                        stopGeneration()
+                        // TODO: Implement stop functionality
+                        print("Stop button pressed")
                     } else {
-                        sendIntelligentMessage()
+                        sendMessage()
                     }
                 }) {
                     ZStack {
@@ -236,10 +277,16 @@ struct ChatView: View {
                                 .foregroundColor(canSendMessage ? .blue : .secondary)
                         }
                     }
+>>>>>>> parent of 78b3861 (Implement Intelligent Response Pipeline - Eliminate AI response delays with multi-layer intelligence system)
                 }
-                .disabled(!canSendMessage && !isLoading)
+                .disabled(inputText.trimmingCharacters(in: .whitespaces).isEmpty && !isLoading)
             }
+            .padding()
         }
+<<<<<<< HEAD
+        .navigationTitle(selectedProject?.title ?? "No Project")
+        .onAppear {
+=======
         .padding()
     }
     
@@ -251,50 +298,25 @@ struct ChatView: View {
         ollamaService.isConnected
     }
     
-    private var pipelineStatusIcon: String {
-        switch currentResponseLayer {
-        case .none: return "circle"
-        case .instant: return "bolt.fill"
-        case .fast: return "hare.fill"
-        case .intelligent: return "brain.head.profile"
-        }
-    }
-    
-    private var pipelineStatusColor: Color {
-        switch currentResponseLayer {
-        case .none: return .secondary
-        case .instant: return .yellow
-        case .fast: return .orange
-        case .intelligent: return .purple
-        }
-    }
-    
-    private var pipelineStatusText: String {
-        switch currentResponseLayer {
-        case .none: return "Ready"
-        case .instant: return "Instant"
-        case .fast: return "Fast"
-        case .intelligent: return "Deep"
-        }
-    }
-    
     // MARK: - Helper Methods
     
-    private func setupIntelligentState() {
+    private func setupInitialState() {
         Task {
             await ollamaService.checkConnection()
             await modelManager.refreshAvailableModels()
-            await intelligentPipeline.startBackgroundOptimization()
             setInitialModel()
         }
     }
     
     private func loadMessages() {
         withAnimation(.easeInOut(duration: 0.3)) {
+>>>>>>> parent of 78b3861 (Implement Intelligent Response Pipeline - Eliminate AI response delays with multi-layer intelligence system)
             messages = selectedProject?.chats ?? []
         }
     }
     
+<<<<<<< HEAD
+=======
     private func setInitialModel() {
         if let preferredModel = modelManager.userPreferredModel,
            modelManager.availableModels.contains(where: { $0.name == preferredModel }) {
@@ -304,136 +326,275 @@ struct ChatView: View {
         }
     }
     
-    private func handleIntelligentTextChange(_ text: String) {
+    private func handleTextChange(_ text: String) {
         // Show typing indicator for longer messages
         withAnimation(.easeInOut(duration: 0.2)) {
-            isTyping = text.count > 5
+            isTyping = text.count > 10
         }
         
-        // Estimate response time based on message complexity and layer prediction
+        // Estimate response time based on message complexity
         if text.count > 0 {
-            estimatedResponseTime = estimateIntelligentResponseTime(for: text)
+            estimatedResponseTime = estimateResponseTime(for: text)
         }
     }
     
-    private func getInputPrediction() -> String {
-        let query = inputText.lowercased()
-        
-        if query.contains("hello") || query.contains("hi") {
-            return "→ Instant response ready"
-        }
-        
-        if query.contains("help") || query.contains("what") {
-            return "→ Quick answer available"
-        }
-        
-        if query.contains("code") || query.contains("function") {
-            return "→ Programming mode activated"
-        }
-        
-        if query.count > 50 {
-            return "→ Deep analysis mode"
-        }
-        
-        return "→ Smart routing enabled"
-    }
-    
-    private func estimateIntelligentResponseTime(for text: String) -> Double {
-        let query = text.lowercased()
-        
-        // Instant layer predictions
-        if query.contains("hello") || query.contains("hi") || query.contains("thanks") {
-            return 0.05
-        }
-        
-        // Fast layer predictions
-        if query.count < 20 && !query.contains("explain") && !query.contains("complex") {
-            return 0.8
-        }
-        
-        // Intelligent layer predictions
-        let complexityFactor = query.contains("explain") || query.contains("analyze") ? 2.0 : 1.0
+    private func estimateResponseTime(for text: String) -> Double {
+        let baseTime = 2.0
         let lengthFactor = Double(text.count) / 100.0
+        let complexityFactor = text.lowercased().contains("code") ? 2.0 : 1.0
         
-        return min(2.0 + lengthFactor * complexityFactor, 8.0)
+        return min(baseTime + lengthFactor * complexityFactor, 15.0)
     }
     
-    // MARK: - Intelligent Message Sending
+    // MARK: - Message Sending with Enhanced Feedback
     
-    private func sendIntelligentMessage() {
+>>>>>>> parent of 78b3861 (Implement Intelligent Response Pipeline - Eliminate AI response delays with multi-layer intelligence system)
+    private func sendMessage() {
         guard let selectedProject = selectedProject else { return }
-        guard canSendMessage else { return }
+        
+        if isLoading {
+            // TODO: Implement stop generation
+            return
+        }
         
         let userMessage = ChatMessage(id: UUID(), role: .user, content: inputText)
-        let messageToSend = inputText
         
-        // Immediate UI feedback with animation
-        withAnimation(.spring(response: 0.4, dampingFraction: 0.8)) {
+        withAnimation(.easeInOut(duration: 0.3)) {
             messages.append(userMessage)
+<<<<<<< HEAD
+        }
+        
+        inputText = ""
+        isLoading = true
+        streamedMessage = ""
+        scrollID = UUID()
+        
+        // Build conversation context
+        let conversationContext = buildConversationContext(from: messages)
+        
+        let payload: [String: Any] = [
+            "model": "mistral",
+            "prompt": conversationContext,
+            "stream": true
+        ]
+        
+        guard let jsonData = try? JSONSerialization.data(withJSONObject: payload) else {
+            handleError("Failed to encode request")
+            return
+        }
+        
+        var request = URLRequest(url: ollamaEndpoint)
+        request.httpMethod = "POST"
+        request.httpBody = jsonData
+        request.addValue("application/json", forHTTPHeaderField: "Content-Type")
+        
+        // Use URLSession.shared with simple completion handler - no delegate needed
+        let task = URLSession.shared.dataTask(with: request) { data, response, error in
+            DispatchQueue.main.async {
+                if let error = error {
+                    self.handleError("Network error: \(error.localizedDescription)")
+                    return
+                }
+=======
             inputText = ""
             isLoading = true
             isTyping = false
             streamedMessage = ""
             responseStartTime = Date()
-            currentResponseLayer = .none
         }
         
         Task {
-            await processIntelligentResponse(messageToSend, selectedProject: selectedProject)
+            // Select optimal model if auto-optimization is enabled
+            if modelManager.autoOptimizationEnabled {
+                let optimalModel = await selectOptimalModel(for: messageToSend)
+                await MainActor.run {
+                    currentModel = optimalModel
+                }
+            }
+            
+            // Ensure model is available
+            guard await ollamaService.isModelAvailable(currentModel) else {
+                await handleError("Model '\(currentModel)' is not installed")
+                return
+            }
+            
+            // Generate response
+            await generateResponse(message: messageToSend, model: currentModel)
         }
     }
     
-    private func processIntelligentResponse(_ message: String, selectedProject: Project) async {
+    private func generateResponse(message: String, model: String) async {
+        guard let selectedProject = selectedProject else { return }
+        
         let context = Array(messages.prefix(messages.count - 1))
         
-        for await response in intelligentPipeline.processQuery(message, context: context) {
+        for await response in ollamaService.generateResponse(
+            prompt: message,
+            model: model,
+            context: context,
+            stream: true
+        ) {
             await MainActor.run {
-                self.currentResponseLayer = response.layer
                 self.streamedMessage = response.content
+>>>>>>> parent of 78b3861 (Implement Intelligent Response Pipeline - Eliminate AI response delays with multi-layer intelligence system)
                 
-                if response.isComplete {
-                    // Complete with animation
-                    withAnimation(.easeInOut(duration: 0.4)) {
+                guard let data = data else {
+                    self.handleError("No data received")
+                    return
+                }
+                
+                // For now, handle as non-streaming response
+                do {
+                    if let json = try JSONSerialization.jsonObject(with: data) as? [String: Any],
+                       let response = json["response"] as? String {
+                        
                         let aiMessage = ChatMessage(
                             id: UUID(),
                             role: .assistant,
-                            content: response.content
+                            content: response
                         )
-                        self.messages.append(aiMessage)
-                        self.streamedMessage = ""
+                        
+                        withAnimation(.easeInOut(duration: 0.3)) {
+                            self.messages.append(aiMessage)
+                        }
+                        
                         self.isLoading = false
+<<<<<<< HEAD
+                        self.streamedMessage = ""
+                        
+                        // Save to project
+                        if let index = self.projects.firstIndex(where: { $0.id == selectedProject.id }) {
+                            self.projects[index].chats = self.messages
+                            PersistenceManager.saveProjects(self.projects)
+                        }
+                    } else {
+                        self.handleError("Invalid response format")
+=======
                         self.responseStartTime = nil
-                        self.currentResponseLayer = .none
                     }
                     
                     // Save to project
                     if let index = self.projects.firstIndex(where: { $0.id == selectedProject.id }) {
                         self.projects[index].chats = self.messages
                         PersistenceManager.saveProjects(self.projects)
+>>>>>>> parent of 78b3861 (Implement Intelligent Response Pipeline - Eliminate AI response delays with multi-layer intelligence system)
+                    }
+                } catch {
+                    self.handleError("Failed to parse response: \(error.localizedDescription)")
+                }
+            }
+        }
+        
+<<<<<<< HEAD
+        task.resume()
+    }
+    
+    private func buildConversationContext(from messages: [ChatMessage]) -> String {
+        let recentMessages = Array(messages.suffix(10))
+        
+        var context = ""
+        context += "You are a helpful AI assistant. Respond naturally and conversationally based on the chat history.\n\n"
+        
+        for message in recentMessages {
+            switch message.role {
+            case .user:
+                context += "Human: \(message.content)\n\n"
+            case .assistant:
+                context += "Assistant: \(message.content)\n\n"
+            case .system:
+                context += "System: \(message.content)\n\n"
+            }
+        }
+        
+        context += "Assistant: "
+        return context
+=======
+        // Handle case where streaming finishes without completion
+        await MainActor.run {
+            if self.isLoading {
+                withAnimation(.easeInOut(duration: 0.4)) {
+                    self.isLoading = false
+                    self.responseStartTime = nil
+                    
+                    if !self.streamedMessage.isEmpty {
+                        let aiMessage = ChatMessage(
+                            id: UUID(),
+                            role: .assistant,
+                            content: self.streamedMessage
+                        )
+                        self.messages.append(aiMessage)
+                        self.streamedMessage = ""
+                        
+                        // Save to project
+                        if let index = self.projects.firstIndex(where: { $0.id == selectedProject.id }) {
+                            self.projects[index].chats = self.messages
+                            PersistenceManager.saveProjects(self.projects)
+                        }
+                    } else {
+                        self.handleErrorSync("No response received from model")
                     }
                 }
             }
         }
     }
     
-    private func stopGeneration() {
-        withAnimation(.easeInOut(duration: 0.3)) {
-            isLoading = false
-            streamedMessage = ""
-            responseStartTime = nil
-            currentResponseLayer = .none
-        }
+    private func selectOptimalModel(for message: String) async -> String {
+        let complexity = analyzeQueryComplexity(message)
+        let domain = analyzeQueryDomain(message)
+        
+        let optimalModel = await modelManager.selectOptimalModel(
+            for: message,
+            complexity: complexity,
+            domain: domain,
+            userOverride: modelManager.autoOptimizationEnabled ? nil : currentModel
+        )
+        
+        return optimalModel.name
     }
     
-    // MARK: - Error Handling
-    
-    private func handleError(_ message: String) async {
-        await MainActor.run {
-            handleErrorSync(message)
+    private func analyzeQueryComplexity(_ message: String) -> QueryComplexity {
+        let messageLength = message.count
+        let codePatterns = ["def ", "function", "class ", "import", "```", "console.log", "print("]
+        let complexPatterns = ["architecture", "design pattern", "algorithm", "optimize", "refactor"]
+        
+        if complexPatterns.contains(where: message.lowercased().contains) {
+            return .complex
         }
+        
+        if codePatterns.contains(where: message.contains) {
+            return .standard
+        }
+        
+        return messageLength > 100 ? .standard : .simple
     }
     
-    private func handleErrorSync(_ message: String) {
+    private func analyzeQueryDomain(_ message: String) -> QueryDomain {
+        let messageLower = message.lowercased()
+        
+        if messageLower.contains("code") || messageLower.contains("function") ||
+           messageLower.contains("debug") || messageLower.contains("error") {
+            if messageLower.contains("change") || messageLower.contains("modify") ||
+               messageLower.contains("update") || messageLower.contains("fix") {
+                return .codeIteration
+            }
+            return .codeGeneration
+        }
+        
+        if messageLower.contains("math") || messageLower.contains("calculate") ||
+           messageLower.contains("equation") || messageLower.contains("formula") {
+            return .mathematics
+        }
+        
+        if messageLower.contains("story") || messageLower.contains("write") ||
+           messageLower.contains("creative") || messageLower.contains("poem") {
+            return .creativeWriting
+        }
+        
+        return .generalChat
+>>>>>>> parent of 78b3861 (Implement Intelligent Response Pipeline - Eliminate AI response delays with multi-layer intelligence system)
+    }
+    
+    private func handleError(_ message: String) {
         withAnimation(.easeInOut(duration: 0.4)) {
             let errorMessage = ChatMessage(
                 id: UUID(),
@@ -443,15 +604,21 @@ struct ChatView: View {
             messages.append(errorMessage)
             isLoading = false
             streamedMessage = ""
+<<<<<<< HEAD
+=======
             responseStartTime = nil
-            currentResponseLayer = .none
+>>>>>>> parent of 78b3861 (Implement Intelligent Response Pipeline - Eliminate AI response delays with multi-layer intelligence system)
         }
     }
 }
 
-// MARK: - Enhanced Message Components for Pipeline
+<<<<<<< HEAD
+struct MessageRowView: View {
+=======
+// MARK: - Enhanced Message Components
 
 struct EnhancedMessageRowView: View {
+>>>>>>> parent of 78b3861 (Implement Intelligent Response Pipeline - Eliminate AI response delays with multi-layer intelligence system)
     let message: ChatMessage
     @State private var isVisible = false
     
@@ -479,20 +646,23 @@ struct EnhancedMessageRowView: View {
         .padding(.vertical, 4)
         .opacity(isVisible ? 1.0 : 0.0)
         .offset(y: isVisible ? 0 : 10)
-        .animation(.easeOut(duration: 0.4), value: isVisible)
         .onAppear {
-            withAnimation(.easeOut(duration: 0.3).delay(0.1)) {
+            withAnimation(.easeOut(duration: 0.5).delay(0.1)) {
                 isVisible = true
             }
         }
     }
 }
 
-struct IntelligentStreamingView: View {
+<<<<<<< HEAD
+struct LoadingIndicatorView: View {
+    @State private var animationAmount = 1.0
+=======
+struct StreamingMessageView: View {
     let content: String
-    let layer: IntelligentResponsePipeline.ResponseLayer
     let isComplete: Bool
     @State private var cursorVisible = true
+>>>>>>> parent of 78b3861 (Implement Intelligent Response Pipeline - Eliminate AI response delays with multi-layer intelligence system)
     
     var body: some View {
         HStack(alignment: .top, spacing: 12) {
@@ -502,25 +672,34 @@ struct IntelligentStreamingView: View {
                 .frame(width: 24)
             
             VStack(alignment: .leading, spacing: 4) {
-                HStack {
-                    Text("Assistant")
+                Text("Assistant")
+                    .font(.caption)
+                    .foregroundColor(.secondary)
+                
+                HStack(spacing: 4) {
+                    ForEach(0..<3) { index in
+                        Circle()
+                            .fill(Color.secondary)
+                            .frame(width: 8, height: 8)
+                            .scaleEffect(animationAmount)
+                            .animation(
+                                Animation.easeInOut(duration: 0.6)
+                                    .repeatForever(autoreverses: true)
+                                    .delay(Double(index) * 0.2),
+                                value: animationAmount
+                            )
+                    }
+                    Text("thinking...")
                         .font(.caption)
                         .foregroundColor(.secondary)
-                    
-                    // Layer indicator
-                    Text(layerText)
-                        .font(.caption2)
-                        .foregroundColor(layerColor)
-                        .padding(.horizontal, 4)
-                        .padding(.vertical, 1)
-                        .background(layerColor.opacity(0.2))
-                        .cornerRadius(3)
+<<<<<<< HEAD
+=======
                     
                     if !isComplete {
                         HStack(spacing: 2) {
                             ForEach(0..<3) { index in
                                 Circle()
-                                    .fill(layerColor)
+                                    .fill(Color.green)
                                     .frame(width: 4, height: 4)
                                     .scaleEffect(cursorVisible ? 1.0 : 0.5)
                                     .animation(
@@ -541,42 +720,27 @@ struct IntelligentStreamingView: View {
                     
                     if !isComplete && !content.isEmpty {
                         Rectangle()
-                            .fill(layerColor)
+                            .fill(Color.green)
                             .frame(width: 2, height: 20)
                             .opacity(cursorVisible ? 1.0 : 0.3)
                             .animation(.easeInOut(duration: 0.8).repeatForever(), value: cursorVisible)
                     }
+>>>>>>> parent of 78b3861 (Implement Intelligent Response Pipeline - Eliminate AI response delays with multi-layer intelligence system)
                 }
             }
         }
         .padding(.vertical, 4)
         .onAppear {
+<<<<<<< HEAD
+            animationAmount = 0.5
+=======
             cursorVisible = true
-        }
-    }
-    
-    private var layerText: String {
-        switch layer {
-        case .none: return "Processing"
-        case .instant: return "Instant"
-        case .fast: return "Fast"
-        case .intelligent: return "Deep"
-        }
-    }
-    
-    private var layerColor: Color {
-        switch layer {
-        case .none: return .secondary
-        case .instant: return .yellow
-        case .fast: return .orange
-        case .intelligent: return .purple
         }
     }
 }
 
-struct IntelligentLoadingView: View {
+struct EnhancedLoadingView: View {
     let model: String
-    let layer: IntelligentResponsePipeline.ResponseLayer
     let estimatedTime: Double
     let elapsedTime: Double
     
@@ -590,26 +754,16 @@ struct IntelligentLoadingView: View {
                 .frame(width: 24)
             
             VStack(alignment: .leading, spacing: 8) {
-                HStack {
-                    Text("Assistant")
-                        .font(.caption)
-                        .foregroundColor(.secondary)
-                    
-                    Text(layerText)
-                        .font(.caption2)
-                        .foregroundColor(layerColor)
-                        .padding(.horizontal, 4)
-                        .padding(.vertical, 1)
-                        .background(layerColor.opacity(0.2))
-                        .cornerRadius(3)
-                }
+                Text("Assistant")
+                    .font(.caption)
+                    .foregroundColor(.secondary)
                 
                 HStack(spacing: 12) {
                     // Animated thinking indicator
                     HStack(spacing: 4) {
                         ForEach(0..<3) { index in
                             Circle()
-                                .fill(layerColor)
+                                .fill(Color.green)
                                 .frame(width: 8, height: 8)
                                 .scaleEffect(animationPhase == index ? 1.2 : 0.8)
                                 .opacity(animationPhase == index ? 1.0 : 0.6)
@@ -624,13 +778,13 @@ struct IntelligentLoadingView: View {
                     }
                     
                     VStack(alignment: .leading, spacing: 2) {
-                        Text(loadingText)
+                        Text("Thinking with \(model)...")
                             .font(.subheadline)
                             .foregroundColor(.secondary)
                         
                         // Progress indicator
                         HStack {
-                            if estimatedTime > 0 && layer != .instant {
+                            if estimatedTime > 0 {
                                 let progress = min(elapsedTime / estimatedTime, 1.0)
                                 ProgressView(value: progress)
                                     .progressViewStyle(LinearProgressViewStyle())
@@ -639,6 +793,10 @@ struct IntelligentLoadingView: View {
                                 Text("\(String(format: "%.1f", elapsedTime))s")
                                     .font(.caption2)
                                     .foregroundColor(.secondary)
+                            } else {
+                                ProgressView()
+                                    .progressViewStyle(CircularProgressViewStyle())
+                                    .controlSize(.small)
                             }
                         }
                     }
@@ -647,36 +805,9 @@ struct IntelligentLoadingView: View {
         }
         .padding(.vertical, 4)
     }
-    
-    private var layerText: String {
-        switch layer {
-        case .none: return "Routing"
-        case .instant: return "Instant"
-        case .fast: return "Fast"
-        case .intelligent: return "Deep"
-        }
-    }
-    
-    private var layerColor: Color {
-        switch layer {
-        case .none: return .secondary
-        case .instant: return .yellow
-        case .fast: return .orange
-        case .intelligent: return .purple
-        }
-    }
-    
-    private var loadingText: String {
-        switch layer {
-        case .none: return "Analyzing query..."
-        case .instant: return "Processing instantly..."
-        case .fast: return "Using fast model..."
-        case .intelligent: return "Deep thinking with \(model)..."
-        }
-    }
 }
 
-// MARK: - Model Picker Sheet (Simplified for Pipeline)
+// MARK: - Model Picker Sheet (Simplified for macOS)
 
 struct ModelPickerSheet: View {
     let availableModels: [DynamicModelManager.ModelInfo]
@@ -699,21 +830,23 @@ struct ModelPickerSheet: View {
                 .buttonStyle(.borderedProminent)
             }
             
-            VStack(alignment: .leading, spacing: 8) {
-                HStack {
-                    Image(systemName: "brain.head.profile")
-                        .foregroundColor(.purple)
-                    Text("Intelligent Pipeline Active")
-                        .font(.headline)
+            if autoOptimizationEnabled {
+                VStack(alignment: .leading, spacing: 8) {
+                    HStack {
+                        Image(systemName: "brain.head.profile")
+                            .foregroundColor(.green)
+                        Text("Auto-Optimization Enabled")
+                            .font(.headline)
+                    }
+                    
+                    Text("The system automatically selects the best model for each query.")
+                        .font(.caption)
+                        .foregroundColor(.secondary)
                 }
-                
-                Text("The system uses multiple models intelligently. This setting controls the primary model for complex queries.")
-                    .font(.caption)
-                    .foregroundColor(.secondary)
+                .padding()
+                .background(Color.green.opacity(0.1))
+                .cornerRadius(8)
             }
-            .padding()
-            .background(Color.purple.opacity(0.1))
-            .cornerRadius(8)
             
             Text("Available Models")
                 .font(.headline)
@@ -774,6 +907,7 @@ struct ModelPickerSheet: View {
         } else {
             let sizeInGB = Double(sizeInMB) / 1024.0
             return String(format: "%.1f GB", sizeInGB)
+>>>>>>> parent of 78b3861 (Implement Intelligent Response Pipeline - Eliminate AI response delays with multi-layer intelligence system)
         }
     }
 }
