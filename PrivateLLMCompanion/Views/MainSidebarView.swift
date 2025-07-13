@@ -282,7 +282,7 @@ struct MainSidebarView: View {
             // Main Chat Interface - Enhanced ChatView
             RevolutionaryEmbeddedChatView(
                 messages: quickChatManager.currentConversation.messages,
-                selectedProject: selectedProject,
+                selectedProject: $selectedProject,
                 projects: $projects,
                 quickChatManager: quickChatManager
             )
@@ -485,13 +485,14 @@ struct MainSidebarView: View {
         }
     }
     
+    // FIXED: Properly capture the returned project
     private func handleOrganizationSuggestionAccepted(_ suggestion: QuickChatManager.OrganizationSuggestion) {
         quickChatManager.acceptOrganizationSuggestion()
         
         switch suggestion.type {
         case .createProject, .graduateConversation:
             if let projectName = suggestion.suggestedProjectName {
-                _ = quickChatManager.graduateToProject(
+                let newProject = quickChatManager.graduateToProject(
                     projectName: projectName,
                     description: "Created from Quick Chat conversation",
                     projects: &projects
@@ -535,7 +536,7 @@ struct MainSidebarView: View {
 
 struct RevolutionaryEmbeddedChatView: View {
     let messages: [ChatMessage]
-    let selectedProject: Project?
+    @Binding var selectedProject: Project? // FIXED: Changed from let to @Binding
     @Binding var projects: [Project]
     @ObservedObject var quickChatManager: QuickChatManager
     
@@ -740,7 +741,7 @@ struct RevolutionaryEmbeddedChatView: View {
     
     // MARK: - Conversational Command Preview
     
-    private func conversationalCommandPreview(_ command: QuickChatManager.ConversationalCommand) -> some View {
+    func conversationalCommandPreview(_ command: QuickChatManager.ConversationalCommand) -> some View {
         HStack {
             Image(systemName: "sparkles")
                 .foregroundColor(.orange)
@@ -791,7 +792,7 @@ struct RevolutionaryEmbeddedChatView: View {
     
     // MARK: - Core Functions
     
-    private func setupInitialState() {
+    func setupInitialState() {
         Task {
             _ = await ollamaService.checkConnection()
             await modelManager.refreshAvailableModels()
@@ -799,7 +800,7 @@ struct RevolutionaryEmbeddedChatView: View {
         }
     }
     
-    private func setInitialModel() {
+    func setInitialModel() {
         if let preferredModel = modelManager.userPreferredModel,
            modelManager.availableModels.contains(where: { $0.name == preferredModel }) {
             currentModel = preferredModel
@@ -808,7 +809,7 @@ struct RevolutionaryEmbeddedChatView: View {
         }
     }
     
-    private func sendMessage() {
+    func sendMessage() {
         guard canSendMessage else { return }
         
         let messageText = inputText.trimmingCharacters(in: .whitespacesAndNewlines)
@@ -898,8 +899,8 @@ struct RevolutionaryEmbeddedChatView: View {
         PersistenceManager.saveProjects(projects)
     }
     
-    private func sendRegularMessage(_ messageText: String) {
-    private func sendRegularMessage(_ messageText: String) {
+    // FIXED: Moved sendRegularMessage out of local scope and removed private
+    func sendRegularMessage(_ messageText: String) {
         let userMessage = ChatMessage(id: UUID(), role: .user, content: messageText)
         
         // Add to quick chat manager or project
@@ -924,9 +925,8 @@ struct RevolutionaryEmbeddedChatView: View {
             await generateResponse(for: messageText, context: messages)
         }
     }
-    }
     
-    private func generateResponse(for message: String, context: [ChatMessage]) async {
+    func generateResponse(for message: String, context: [ChatMessage]) async {
         guard await ollamaService.isModelAvailable(currentModel) else {
             await handleError("Model '\(currentModel)' is not installed")
             return
@@ -996,7 +996,7 @@ struct RevolutionaryEmbeddedChatView: View {
         }
     }
     
-    private func handleError(_ message: String) async {
+    func handleError(_ message: String) async {
         await MainActor.run {
             let errorMessage = ChatMessage(
                 id: UUID(),

@@ -8,8 +8,8 @@ class ThreadManager: ObservableObject {
     
     // MARK: - Thread Structure
     
-    struct ConversationThread: Identifiable, Codable {
-        let id: UUID = UUID()
+    struct ConversationThread: Identifiable, Codable, Equatable {
+        let id: UUID
         var title: String
         var messages: [ChatMessage]
         var createdAt: Date
@@ -18,6 +18,34 @@ class ThreadManager: ObservableObject {
         var topic: String? // AI-detected topic
         var isArchived: Bool = false
         var isPinned: Bool = false
+        
+        // Custom initializer to set ID
+        init(
+            id: UUID = UUID(),
+            title: String,
+            messages: [ChatMessage] = [],
+            createdAt: Date = Date(),
+            lastActivity: Date = Date(),
+            projectId: UUID? = nil,
+            topic: String? = nil,
+            isArchived: Bool = false,
+            isPinned: Bool = false
+        ) {
+            self.id = id
+            self.title = title
+            self.messages = messages
+            self.createdAt = createdAt
+            self.lastActivity = lastActivity
+            self.projectId = projectId
+            self.topic = topic
+            self.isArchived = isArchived
+            self.isPinned = isPinned
+        }
+        
+        // Equatable conformance
+        static func == (lhs: ConversationThread, rhs: ConversationThread) -> Bool {
+            return lhs.id == rhs.id
+        }
         
         var summary: String {
             if messages.count <= 1 {
@@ -53,11 +81,7 @@ class ThreadManager: ObservableObject {
     func createNewThread(title: String? = nil, projectId: UUID? = nil) -> ConversationThread {
         let thread = ConversationThread(
             title: title ?? "New Chat",
-            messages: [],
-            createdAt: Date(),
-            lastActivity: Date(),
-            projectId: projectId,
-            topic: nil
+            projectId: projectId
         )
         
         allThreads.append(thread)
@@ -94,7 +118,7 @@ class ThreadManager: ObservableObject {
         allThreads[index].messages.append(message)
         allThreads[index].lastActivity = Date()
         
-        if allThreads[index] == activeThread {
+        if allThreads[index].id == activeThread?.id {
             activeThread = allThreads[index]
         }
         
@@ -197,8 +221,8 @@ class ThreadManager: ObservableObject {
         
         var suggestions: [ThreadOrganizationSuggestion] = []
         
-        // Analyze thread content
-        let conversationText = thread.messages.map { $0.content }.joined(separator: " ")
+        // Analyze thread content (simplified for now)
+        _ = thread.messages.map { $0.content }.joined(separator: " ")
         
         // Suggest project based on content
         if let insight = analyzer.currentInsight {
@@ -257,9 +281,7 @@ class ThreadManager: ObservableObject {
             title: title,
             messages: messages,
             createdAt: messages.first?.timestamp ?? Date(),
-            lastActivity: messages.last?.timestamp ?? Date(),
-            projectId: nil,
-            topic: nil
+            lastActivity: messages.last?.timestamp ?? Date()
         )
         
         allThreads.append(thread)
