@@ -491,7 +491,7 @@ struct MainSidebarView: View {
         switch suggestion.type {
         case .createProject, .graduateConversation:
             if let projectName = suggestion.suggestedProjectName {
-                let newProject = quickChatManager.graduateToProject(
+                _ = quickChatManager.graduateToProject(
                     projectName: projectName,
                     description: "Created from Quick Chat conversation",
                     projects: &projects
@@ -813,13 +813,93 @@ struct RevolutionaryEmbeddedChatView: View {
         
         let messageText = inputText.trimmingCharacters(in: .whitespacesAndNewlines)
         
-        // Check for conversational commands first
-        if let command = quickChatManager.processConversationalCommand(messageText) {
-            handleConversationalCommand(command, originalMessage: messageText)
-            return
+        // ENHANCED: Check for conversational commands FIRST and execute them
+        let commandResult = quickChatManager.processAndExecuteConversationalCommand(messageText, projects: &projects)
+        
+        switch commandResult {
+        case .notACommand:
+            // Regular message handling - proceed normally
+            sendRegularMessage(messageText)
+            
+        case .projectCreated(let project):
+            // Command successfully created project
+            let userMessage = ChatMessage(id: UUID(), role: .user, content: messageText)
+            let confirmationMessage = ChatMessage(
+                id: UUID(),
+                role: .assistant,
+                content: "✅ Created project '\(project.title)' and moved this conversation there!"
+            )
+            
+            quickChatManager.addMessage(userMessage)
+            quickChatManager.addMessage(confirmationMessage)
+            
+            // Switch to the new project
+            withAnimation(.spring()) {
+                selectedProject = project
+            }
+            
+        case .movedToProject(let project):
+            // Command successfully moved to existing project
+            let userMessage = ChatMessage(id: UUID(), role: .user, content: messageText)
+            let confirmationMessage = ChatMessage(
+                id: UUID(),
+                role: .assistant,
+                content: "✅ Moved this conversation to '\(project.title)' project!"
+            )
+            
+            quickChatManager.addMessage(userMessage)
+            quickChatManager.addMessage(confirmationMessage)
+            
+            // Switch to the existing project
+            withAnimation(.spring()) {
+                selectedProject = project
+            }
+            
+        case .organizationTriggered:
+            // Command triggered organization panel
+            let userMessage = ChatMessage(id: UUID(), role: .user, content: messageText)
+            let responseMessage = ChatMessage(
+                id: UUID(),
+                role: .assistant,
+                content: "I'll help you organize this conversation. Let me suggest some options..."
+            )
+            
+            quickChatManager.addMessage(userMessage)
+            quickChatManager.addMessage(responseMessage)
+            
+        case .splitInitiated:
+            // Command initiated conversation splitting
+            let userMessage = ChatMessage(id: UUID(), role: .user, content: messageText)
+            let responseMessage = ChatMessage(
+                id: UUID(),
+                role: .assistant,
+                content: "🚧 Conversation splitting is coming soon! For now, I can help you create a new project."
+            )
+            
+            quickChatManager.addMessage(userMessage)
+            quickChatManager.addMessage(responseMessage)
+            
+        case .error(let errorMessage):
+            // Command failed
+            let userMessage = ChatMessage(id: UUID(), role: .user, content: messageText)
+            let errorResponseMessage = ChatMessage(
+                id: UUID(),
+                role: .assistant,
+                content: "❌ \(errorMessage)"
+            )
+            
+            quickChatManager.addMessage(userMessage)
+            quickChatManager.addMessage(errorResponseMessage)
         }
         
-        // Regular message handling
+        inputText = ""
+        
+        // Save projects after any command execution
+        PersistenceManager.saveProjects(projects)
+    }
+    
+    private func sendRegularMessage(_ messageText: String) {
+    private func sendRegularMessage(_ messageText: String) {
         let userMessage = ChatMessage(id: UUID(), role: .user, content: messageText)
         
         // Add to quick chat manager or project
@@ -836,7 +916,6 @@ struct RevolutionaryEmbeddedChatView: View {
             quickChatManager.addMessage(userMessage)
         }
         
-        inputText = ""
         isLoading = true
         streamedMessage = ""
         
@@ -845,74 +924,6 @@ struct RevolutionaryEmbeddedChatView: View {
             await generateResponse(for: messageText, context: messages)
         }
     }
-    
-    private func handleConversationalCommand(_ command: QuickChatManager.ConversationalCommand, originalMessage: String) {
-        // First, add the user's message
-        let userMessage = ChatMessage(id: UUID(), role: .user, content: originalMessage)
-        quickChatManager.addMessage(userMessage)
-        
-        // Then handle the command
-        switch command {
-        case .createProject(let name):
-            let newProject = quickChatManager.graduateToProject(
-                projectName: name,
-                description: "Created via conversational command",
-                projects: &projects
-            )
-            
-            // Add confirmation message
-            let confirmationMessage = ChatMessage(
-                id: UUID(),
-                role: .assistant,
-                content: "✅ Created project '\(name)' and moved this conversation there!"
-            )
-            quickChatManager.addMessage(confirmationMessage)
-            
-            PersistenceManager.saveProjects(projects)
-            
-        case .moveToProject(let projectName):
-            if let projectName = projectName,
-               let targetProject = projects.first(where: { $0.title.lowercased().contains(projectName.lowercased()) }) {
-                
-                let success = quickChatManager.moveToExistingProject(
-                    projectId: targetProject.id,
-                    projects: &projects
-                )
-                
-                if success {
-                    let confirmationMessage = ChatMessage(
-                        id: UUID(),
-                        role: .assistant,
-                        content: "✅ Moved this conversation to '\(targetProject.title)' project!"
-                    )
-                    quickChatManager.addMessage(confirmationMessage)
-                    PersistenceManager.saveProjects(projects)
-                }
-            } else {
-                let errorMessage = ChatMessage(
-                    id: UUID(),
-                    role: .assistant,
-                    content: "❌ Couldn't find a project with that name. Available projects: \(projects.map { $0.title }.joined(separator: ", "))"
-                )
-                quickChatManager.addMessage(errorMessage)
-            }
-            
-        case .organizeConversation:
-            // Trigger organization suggestion manually
-            withAnimation(.spring()) {
-                quickChatManager.triggerOrganizationSuggestion()
-            }
-            
-        case .splitConversation:
-            let infoMessage = ChatMessage(
-                id: UUID(),
-                role: .assistant,
-                content: "🚧 Conversation splitting feature is coming soon! For now, you can create a new project to organize different topics."
-            )
-            quickChatManager.addMessage(infoMessage)
-        }
-        
-        inputText = ""
     }
     
     private func generateResponse(for message: String, context: [ChatMessage]) async {
