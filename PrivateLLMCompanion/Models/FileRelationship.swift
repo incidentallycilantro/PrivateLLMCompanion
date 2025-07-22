@@ -21,7 +21,7 @@ struct FileRelationship: Identifiable, Codable, Hashable {
         case contradicts = "Contradicts"
         case implements = "Implements"
         
-        func reverse() -> RelationshipType {
+        func reversedType() -> RelationshipType {
             switch self {
             case .references: return .references
             case .builds_on: return .builds_on
