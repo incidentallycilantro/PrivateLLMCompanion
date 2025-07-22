@@ -1,4 +1,5 @@
 import SwiftUI
+import Combine
 
 struct MainSidebarView: View {
     @Binding var projects: [Project]
@@ -6,6 +7,14 @@ struct MainSidebarView: View {
     @StateObject private var quickChatManager = QuickChatManager()
     @State private var selectedView: SidebarSelection = .quickChat
     @State private var showingWelcomeAnimation = false
+    
+    // MARK: - NEW: Knowledge Integration Properties
+    @StateObject private var knowledgeManager = KnowledgeManager()
+    @State private var showingKnowledgePanel = false
+    @State private var showingQuickFileUpload = false
+    @State private var selectedRelevantFile: KnowledgeFile?
+    @State private var showingFilePreview = false
+    @State private var cancellables = Set<AnyCancellable>()
     
     enum SidebarSelection: String, CaseIterable {
         case quickChat = "Quick Chat"
@@ -26,7 +35,7 @@ struct MainSidebarView: View {
             // Revolutionary Sidebar - Always shows immediate chat access
             revolutionarySidebar
         } detail: {
-            // Revolutionary Detail View - Immediate chat access without barriers
+            // Revolutionary Detail View - UPDATED to use enhanced chat
             revolutionaryDetailView
         }
         .onAppear {
@@ -40,14 +49,25 @@ struct MainSidebarView: View {
                     showingWelcomeAnimation = true
                 }
             }
+            
+            // MARK: - NEW: Setup Knowledge Integration
+            setupKnowledgeIntegration()
         }
         .onChange(of: projects) { _, _ in
             // Keep quick chat manager updated with project list for intelligent suggestions
             quickChatManager.updateWithProjects(projects)
         }
+        .sheet(isPresented: $showingFilePreview) {
+            if let file = selectedRelevantFile {
+                KnowledgeFilePreview(
+                    file: file,
+                    knowledgeManager: knowledgeManager
+                )
+            }
+        }
     }
     
-    // MARK: - Revolutionary Sidebar
+    // MARK: - Revolutionary Sidebar (UNCHANGED)
     
     private var revolutionarySidebar: some View {
         VStack(spacing: 0) {
@@ -164,7 +184,7 @@ struct MainSidebarView: View {
         .frame(minWidth: 250)
     }
     
-    // MARK: - Sidebar Header
+    // MARK: - Sidebar Header (UNCHANGED)
     
     private var sidebarHeader: some View {
         VStack(spacing: 12) {
@@ -202,7 +222,7 @@ struct MainSidebarView: View {
         }
     }
     
-    // MARK: - Conversation Intelligence Bar
+    // MARK: - Conversation Intelligence Bar (UNCHANGED)
     
     private var conversationIntelligenceBar: some View {
         Group {
@@ -248,13 +268,14 @@ struct MainSidebarView: View {
         }
     }
     
-    // MARK: - Revolutionary Detail View
+    // MARK: - UPDATED: Revolutionary Detail View with Knowledge Integration
     
     private var revolutionaryDetailView: some View {
         Group {
             switch selectedView {
             case .quickChat:
-                revolutionaryQuickChatView
+                // MARK: - UPDATED: Use Enhanced Quick Chat View with Knowledge
+                enhancedQuickChatView
                 
             case .projects:
                 ProjectsView(
@@ -268,26 +289,38 @@ struct MainSidebarView: View {
         }
     }
     
-    // MARK: - Revolutionary Quick Chat View
+    // MARK: - NEW: Enhanced Quick Chat View with Knowledge Integration
     
-    private var revolutionaryQuickChatView: some View {
+    private var enhancedQuickChatView: some View {
         VStack(spacing: 0) {
-            // Conversation Context Header
-            if let selectedProject = selectedProject {
-                projectContextHeader(selectedProject)
-            } else {
-                quickChatContextHeader
+            // Enhanced context header with knowledge indicators
+            enhancedContextHeader
+            
+            // Main chat interface with knowledge panel
+            HStack(spacing: 0) {
+                // Chat area (existing revolutionary chat)
+                RevolutionaryEmbeddedChatView(
+                    messages: quickChatManager.currentConversation.messages,
+                    selectedProject: $selectedProject,
+                    projects: $projects,
+                    quickChatManager: quickChatManager
+                )
+                .frame(minWidth: 400)
+                
+                // Knowledge panel (toggleable)
+                if showingKnowledgePanel {
+                    Divider()
+                    
+                    KnowledgePanel(
+                        knowledgeManager: knowledgeManager,
+                        project: $currentProjectBinding
+                    )
+                    .frame(width: 350)
+                    .transition(.move(edge: .trailing))
+                }
             }
             
-            // Main Chat Interface - Enhanced ChatView
-            RevolutionaryEmbeddedChatView(
-                messages: quickChatManager.currentConversation.messages,
-                selectedProject: $selectedProject,
-                projects: $projects,
-                quickChatManager: quickChatManager
-            )
-            
-            // REVOLUTIONARY: Ambient Organization Panel
+            // REVOLUTIONARY: Ambient Organization Panel (EXISTING)
             if quickChatManager.showOrganizationPanel {
                 ambientOrganizationPanel
                     .transition(.asymmetric(
@@ -295,27 +328,46 @@ struct MainSidebarView: View {
                         removal: .move(edge: .bottom).combined(with: .opacity)
                     ))
             }
+            
+            // NEW: Contextual recommendations overlay
+            if !knowledgeManager.contextualRecommendations.isEmpty {
+                contextualRecommendationsOverlay
+            }
         }
         .background(Color(NSColor.textBackgroundColor))
     }
     
-    // MARK: - Context Headers
+    // MARK: - NEW: Enhanced Context Header with Knowledge Intelligence
     
-    private var quickChatContextHeader: some View {
+    private var enhancedContextHeader: some View {
         VStack(spacing: 8) {
             HStack {
                 VStack(alignment: .leading, spacing: 4) {
                     HStack {
-                        Image(systemName: "bolt.circle.fill")
-                            .foregroundColor(.blue)
-                        Text("Quick Chat")
+                        Image(systemName: selectedProject != nil ? "folder.fill" : "bolt.circle.fill")
+                            .foregroundColor(selectedProject != nil ? .green : .blue)
+                        
+                        Text(selectedProject?.title ?? "Quick Chat")
                             .font(.headline)
                     }
                     
-                    if quickChatManager.currentConversation.messages.isEmpty {
-                        Text("Start chatting about anything - I'll help organize as we go")
-                            .font(.caption)
-                            .foregroundColor(.secondary)
+                    if let project = selectedProject {
+                        HStack(spacing: 12) {
+                            Text("Project chat • \(project.chats.count) messages")
+                                .font(.caption)
+                                .foregroundColor(.secondary)
+                            
+                            // NEW: Knowledge health indicator
+                            HStack(spacing: 4) {
+                                Image(systemName: project.knowledgeHealth.icon)
+                                    .foregroundColor(project.knowledgeHealth.color)
+                                    .font(.caption)
+                                
+                                Text(project.knowledgeHealth.description)
+                                    .font(.caption)
+                                    .foregroundColor(project.knowledgeHealth.color)
+                            }
+                        }
                     } else {
                         Text(quickChatManager.getConversationSummary())
                             .font(.caption)
@@ -325,15 +377,36 @@ struct MainSidebarView: View {
                 
                 Spacer()
                 
-                // Manual organization button
-                if quickChatManager.currentConversation.messages.count >= 3 {
-                    Button("Organize") {
-                        withAnimation(.spring()) {
-                            quickChatManager.triggerOrganizationSuggestion()
-                        }
+                // NEW: Knowledge actions
+                HStack(spacing: 8) {
+                    // Toggle knowledge panel
+                    Button(action: { toggleKnowledgePanel() }) {
+                        Image(systemName: showingKnowledgePanel ? "sidebar.right" : "sidebar.left")
+                            .foregroundColor(.blue)
                     }
+                    .help(showingKnowledgePanel ? "Hide Knowledge Panel" : "Show Knowledge Panel")
                     .buttonStyle(.bordered)
                     .controlSize(.small)
+                    
+                    // Quick file upload
+                    Button(action: { showingQuickFileUpload = true }) {
+                        Image(systemName: "plus.rectangle.on.folder")
+                            .foregroundColor(.green)
+                    }
+                    .help("Add Files")
+                    .buttonStyle(.bordered)
+                    .controlSize(.small)
+                    
+                    // Manual organization (EXISTING)
+                    if quickChatManager.currentConversation.messages.count >= 3 {
+                        Button("Organize") {
+                            withAnimation(.spring()) {
+                                quickChatManager.triggerOrganizationSuggestion()
+                            }
+                        }
+                        .buttonStyle(.bordered)
+                        .controlSize(.small)
+                    }
                 }
             }
             .padding(.horizontal)
@@ -341,67 +414,81 @@ struct MainSidebarView: View {
             
             Divider()
             
-            // Show organization hint for new users
-            if quickChatManager.shouldShowOrganizationHint() {
-                HStack {
-                    Text(quickChatManager.getOrganizationHint())
-                        .font(.caption)
-                        .foregroundColor(.blue)
-                        .padding(.horizontal, 12)
-                        .padding(.vertical, 6)
-                        .background(Color.blue.opacity(0.1))
-                        .cornerRadius(8)
+            // NEW: Intelligent context indicators
+            if let project = selectedProject, !knowledgeManager.getKnowledgeFiles(for: project).isEmpty {
+                knowledgeContextIndicators(for: project)
+            }
+        }
+        .background(Color(NSColor.controlBackgroundColor))
+    }
+    
+    // MARK: - NEW: Knowledge Context Indicators
+    
+    private func knowledgeContextIndicators(for project: Project) -> some View {
+        HStack {
+            ScrollView(.horizontal, showsIndicators: false) {
+                HStack(spacing: 8) {
+                    // Relevant files for current conversation
+                    let relevantFiles = knowledgeManager.getContextualFiles(
+                        for: quickChatManager.currentConversation.messages.map { $0.content }.joined(separator: " "),
+                        in: project,
+                        limit: 3
+                    )
                     
-                    Spacer()
-                    
-                    Button("Got it") {
-                        // Dismiss hint
+                    if !relevantFiles.isEmpty {
+                        ForEach(relevantFiles.prefix(3)) { file in
+                            RelevantFileChip(file: file) {
+                                selectedRelevantFile = file
+                                showingFilePreview = true
+                            }
+                        }
                     }
-                    .font(.caption)
-                    .buttonStyle(.borderless)
+                    
+                    // Recently used files
+                    let recentFiles = knowledgeManager.getKnowledgeFiles(for: project)
+                        .filter { $0.isRecentlyUsed }
+                        .prefix(2)
+                    
+                    if !recentFiles.isEmpty {
+                        ForEach(recentFiles) { file in
+                            RecentFileChip(file: file) {
+                                selectedRelevantFile = file
+                                showingFilePreview = true
+                            }
+                        }
+                    }
                 }
                 .padding(.horizontal)
-                .padding(.bottom, 8)
-                .transition(.opacity.combined(with: .scale))
             }
-        }
-        .background(Color(NSColor.controlBackgroundColor))
-    }
-    
-    private func projectContextHeader(_ project: Project) -> some View {
-        VStack(spacing: 8) {
-            HStack {
-                VStack(alignment: .leading, spacing: 4) {
-                    HStack {
-                        Image(systemName: "folder.fill")
-                            .foregroundColor(.green)
-                        Text(project.title)
-                            .font(.headline)
-                    }
-                    
-                    Text("Project chat • \(project.chats.count) messages")
-                        .font(.caption)
-                        .foregroundColor(.secondary)
-                }
-                
-                Spacer()
-                
-                Button("Back to Quick Chat") {
-                    selectedProject = nil
-                    quickChatManager.startQuickChat()
-                }
-                .buttonStyle(.bordered)
-                .controlSize(.small)
-            }
-            .padding(.horizontal)
-            .padding(.vertical, 12)
             
-            Divider()
+            Spacer()
         }
-        .background(Color(NSColor.controlBackgroundColor))
+        .padding(.bottom, 8)
+        .transition(.opacity.combined(with: .scale))
     }
     
-    // MARK: - REVOLUTIONARY Ambient Organization Panel
+    // MARK: - NEW: Contextual Recommendations Overlay
+    
+    private var contextualRecommendationsOverlay: some View {
+        VStack {
+            Spacer()
+            
+            ForEach(knowledgeManager.contextualRecommendations.prefix(2)) { recommendation in
+                ContextualRecommendationCard(
+                    recommendation: recommendation,
+                    onAccept: { acceptRecommendation(recommendation) },
+                    onDismiss: { dismissRecommendation(recommendation) }
+                )
+                .padding(.horizontal)
+                .transition(.asymmetric(
+                    insertion: .move(edge: .bottom).combined(with: .opacity),
+                    removal: .move(edge: .bottom).combined(with: .opacity)
+                ))
+            }
+        }
+    }
+    
+    // MARK: - EXISTING: Ambient Organization Panel (UNCHANGED)
     
     private var ambientOrganizationPanel: some View {
         VStack(spacing: 0) {
@@ -474,7 +561,80 @@ struct MainSidebarView: View {
         }
     }
     
-    // MARK: - Action Handlers
+    // MARK: - NEW: Helper Properties
+    
+    private var currentProjectBinding: Binding<Project> {
+        if let selectedProject = selectedProject,
+           let projectIndex = projects.firstIndex(where: { $0.id == selectedProject.id }) {
+            return $projects[projectIndex]
+        } else {
+            // Create a temporary project for quick chat
+            return .constant(Project(
+                id: UUID(),
+                title: "Quick Chat Session",
+                description: "Temporary project for quick chat files",
+                createdAt: Date(),
+                chats: quickChatManager.currentConversation.messages,
+                projectSummary: "",
+                chatSummary: ""
+            ))
+        }
+    }
+    
+    // MARK: - NEW: Setup and Actions
+    
+    private func setupKnowledgeIntegration() {
+        // Update knowledge manager when conversation changes
+        quickChatManager.$currentConversation
+            .sink { conversation in
+                Task {
+                    await knowledgeManager.generateContextualRecommendations(
+                        for: conversation.messages,
+                        in: selectedProject ?? currentProjectBinding.wrappedValue
+                    )
+                }
+            }
+            .store(in: &cancellables)
+    }
+    
+    private func toggleKnowledgePanel() {
+        withAnimation(.spring(response: 0.6, dampingFraction: 0.8)) {
+            showingKnowledgePanel.toggle()
+        }
+    }
+    
+    private func acceptRecommendation(_ recommendation: ContextualRecommendation) {
+        switch recommendation.actionType {
+        case .reference:
+            let fileNames = recommendation.recommendedFiles.map { $0.name }.joined(separator: ", ")
+            print("Referencing files: \(fileNames)")
+            
+        case .upload:
+            showingQuickFileUpload = true
+            
+        case .compare:
+            if recommendation.recommendedFiles.count >= 2 {
+                print("Comparing files...")
+            }
+            
+        case .summarize:
+            Task {
+                for file in recommendation.recommendedFiles {
+                    _ = await knowledgeManager.executeSmartAction(.summarize, on: file)
+                }
+            }
+        }
+        
+        knowledgeManager.contextualRecommendations.removeAll { $0.id == recommendation.id }
+    }
+    
+    private func dismissRecommendation(_ recommendation: ContextualRecommendation) {
+        withAnimation(.easeOut(duration: 0.3)) {
+            knowledgeManager.contextualRecommendations.removeAll { $0.id == recommendation.id }
+        }
+    }
+    
+    // MARK: - EXISTING: Action Handlers (UNCHANGED)
     
     private func startNewQuickChat() {
         withAnimation(.spring()) {
@@ -485,7 +645,7 @@ struct MainSidebarView: View {
         }
     }
     
-    // FIXED: Properly capture the returned project
+    // EXISTING: Organization suggestion handler (UNCHANGED)
     private func handleOrganizationSuggestionAccepted(_ suggestion: QuickChatManager.OrganizationSuggestion) {
         quickChatManager.acceptOrganizationSuggestion()
         
@@ -522,724 +682,162 @@ struct MainSidebarView: View {
             }
             
         case .splitConversation:
-            // TODO: Implement conversation splitting
             print("Split conversation feature coming soon")
             
         case .contextSwitch:
-            // TODO: Implement context switching
             print("Context switch feature coming soon")
         }
     }
 }
 
-// MARK: - Revolutionary Embedded Chat View
+// MARK: - NEW: Supporting Components for Knowledge Integration
 
-struct RevolutionaryEmbeddedChatView: View {
-    let messages: [ChatMessage]
-    @Binding var selectedProject: Project? // FIXED: Changed from let to @Binding
-    @Binding var projects: [Project]
-    @ObservedObject var quickChatManager: QuickChatManager
-    
-    @State private var inputText: String = ""
-    @State private var isLoading = false
-    @State private var streamedMessage: String = ""
-    @State private var currentModel: String = "mistral:latest"
-    @StateObject private var ollamaService = OllamaService()
-    @StateObject private var modelManager = DynamicModelManager()
+struct RelevantFileChip: View {
+    let file: KnowledgeFile
+    let onTap: () -> Void
     
     var body: some View {
-        VStack(spacing: 0) {
-            // Chat Messages with Enhanced Visual Design
-            ScrollViewReader { proxy in
-                ScrollView {
-                    LazyVStack(alignment: .leading, spacing: 12) {
-                        // Welcome message for empty state
-                        if messages.isEmpty {
-                            revolutionaryWelcomeView
-                        }
-                        
-                        // Chat messages
-                        ForEach(messages) { message in
-                            RevolutionaryMessageRowView(message: message)
-                                .id(message.id)
-                        }
-                        
-                        // Streaming message display
-                        if isLoading {
-                            if streamedMessage.isEmpty {
-                                RevolutionaryLoadingView(model: currentModel)
-                            } else {
-                                RevolutionaryStreamingMessageView(
-                                    content: streamedMessage,
-                                    isComplete: false
-                                )
-                            }
-                        }
-                        
-                        Color.clear.frame(height: 1).id("bottom")
-                    }
-                    .padding()
-                }
-                .onChange(of: messages.count) { _, _ in
-                    withAnimation(.easeOut(duration: 0.3)) {
-                        proxy.scrollTo("bottom", anchor: .bottom)
-                    }
-                }
-                .onChange(of: streamedMessage) { _, _ in
-                    withAnimation(.easeOut(duration: 0.2)) {
-                        proxy.scrollTo("bottom", anchor: .bottom)
-                    }
-                }
-            }
-            
-            // Revolutionary Input Area with Immediate Feedback
-            revolutionaryInputArea
-        }
-        .onAppear {
-            setupInitialState()
-        }
-    }
-    
-    // MARK: - Revolutionary Welcome View
-    
-    private var revolutionaryWelcomeView: some View {
-        VStack(spacing: 24) {
-            // Hero welcome section
-            VStack(spacing: 16) {
-                Image(systemName: "bubble.left.and.bubble.right.fill")
-                    .font(.system(size: 60))
-                    .foregroundColor(.blue)
-                    .opacity(0.8)
-                
-                VStack(spacing: 8) {
-                    Text("Ready to Chat!")
-                        .font(.largeTitle)
-                        .bold()
-                    
-                    Text("Start a conversation about anything. I'll intelligently suggest organizing it when it becomes substantial.")
-                        .font(.title3)
-                        .foregroundColor(.secondary)
-                        .multilineTextAlignment(.center)
-                        .lineLimit(3)
-                }
-            }
-            .padding(.top, 40)
-            
-            // Example prompts for inspiration
-            VStack(alignment: .leading, spacing: 12) {
-                Text("Try asking about:")
-                    .font(.headline)
-                    .foregroundColor(.secondary)
-                
-                LazyVGrid(columns: Array(repeating: GridItem(.flexible()), count: 2), spacing: 12) {
-                    ExamplePromptCard(
-                        icon: "curlybraces",
-                        title: "Code Help",
-                        subtitle: "Debug code, architecture advice",
-                        color: .green
-                    ) {
-                        inputText = "Help me debug this React component"
-                    }
-                    
-                    ExamplePromptCard(
-                        icon: "lightbulb.fill",
-                        title: "Ideas & Planning",
-                        subtitle: "Brainstorm, strategize, plan",
-                        color: .orange
-                    ) {
-                        inputText = "Help me plan a mobile app idea"
-                    }
-                    
-                    ExamplePromptCard(
-                        icon: "graduationcap.fill",
-                        title: "Learning",
-                        subtitle: "Explain concepts, tutorials",
-                        color: .purple
-                    ) {
-                        inputText = "Explain how SwiftUI state management works"
-                    }
-                    
-                    ExamplePromptCard(
-                        icon: "pencil.and.outline",
-                        title: "Writing",
-                        subtitle: "Content, documentation, emails",
-                        color: .blue
-                    ) {
-                        inputText = "Help me write project documentation"
-                    }
-                }
-            }
-            .padding(.horizontal, 20)
-            
-            Spacer()
-        }
-        .frame(maxWidth: 600)
-        .transition(.opacity.combined(with: .scale))
-    }
-    
-    // MARK: - Revolutionary Input Area
-    
-    private var revolutionaryInputArea: some View {
-        VStack(spacing: 12) {
-            // Show conversation command suggestions
-            if !inputText.isEmpty, let command = quickChatManager.processConversationalCommand(inputText) {
-                conversationalCommandPreview(command)
-            }
-            
-            // Main input area
-            HStack(spacing: 12) {
-                TextField("Type your message...", text: $inputText, axis: .vertical)
-                    .textFieldStyle(RoundedBorderTextFieldStyle())
-                    .lineLimit(1...4)
-                    .onSubmit {
-                        if canSendMessage {
-                            sendMessage()
-                        }
-                    }
-                    .overlay(
-                        // Subtle typing indicator
-                        HStack {
-                            Spacer()
-                            if !inputText.isEmpty && !isLoading {
-                                Image(systemName: "brain.head.profile")
-                                    .foregroundColor(.blue)
-                                    .font(.caption)
-                                    .opacity(0.6)
-                                    .padding(.trailing, 8)
-                            }
-                        }
-                    )
-                
-                Button(action: {
-                    if isLoading {
-                        // TODO: Implement stop functionality
-                        print("Stop generation")
-                    } else {
-                        sendMessage()
-                    }
-                }) {
-                    ZStack {
-                        if isLoading {
-                            Image(systemName: "stop.circle.fill")
-                                .foregroundColor(.red)
-                        } else {
-                            Image(systemName: "paperplane.fill")
-                                .foregroundColor(canSendMessage ? .blue : .secondary)
-                        }
-                    }
-                    .font(.title2)
-                }
-                .disabled(!canSendMessage && !isLoading)
-                .buttonStyle(.plain)
-                .scaleEffect(canSendMessage ? 1.1 : 1.0)
-                .animation(.spring(response: 0.3), value: canSendMessage)
-            }
-            .padding(.horizontal)
-            .padding(.bottom)
-        }
-    }
-    
-    // MARK: - Conversational Command Preview
-    
-    func conversationalCommandPreview(_ command: QuickChatManager.ConversationalCommand) -> some View {
-        HStack {
-            Image(systemName: "sparkles")
-                .foregroundColor(.orange)
-            
-            VStack(alignment: .leading, spacing: 2) {
-                Text("Smart Command Detected")
+        Button(action: onTap) {
+            HStack(spacing: 6) {
+                Image(systemName: file.fileIcon)
+                    .foregroundColor(file.knowledgeMetadata.detectedContentType.color)
                     .font(.caption)
-                    .bold()
+                
+                Text(file.name)
+                    .font(.caption)
+                    .lineLimit(1)
+                
+                Image(systemName: "sparkles")
                     .foregroundColor(.orange)
-                
-                switch command {
-                case .createProject(let name):
-                    Text("Will create project: \"\(name)\"")
-                        .font(.caption)
-                        .foregroundColor(.secondary)
-                case .moveToProject(let name):
-                    Text("Will move to project: \"\(name ?? "Unknown")\"")
-                        .font(.caption)
-                        .foregroundColor(.secondary)
-                case .organizeConversation:
-                    Text("Will organize this conversation")
-                        .font(.caption)
-                        .foregroundColor(.secondary)
-                case .splitConversation:
-                    Text("Will split conversation")
-                        .font(.caption)
-                        .foregroundColor(.secondary)
-                }
+                    .font(.caption2)
             }
-            
-            Spacer()
-        }
-        .padding(.horizontal, 12)
-        .padding(.vertical, 8)
-        .background(Color.orange.opacity(0.1))
-        .cornerRadius(8)
-        .padding(.horizontal)
-        .transition(.opacity.combined(with: .scale))
-    }
-    
-    // MARK: - Helper Properties
-    
-    private var canSendMessage: Bool {
-        !inputText.trimmingCharacters(in: .whitespaces).isEmpty &&
-        !isLoading &&
-        ollamaService.isConnected
-    }
-    
-    // MARK: - Core Functions
-    
-    func setupInitialState() {
-        Task {
-            _ = await ollamaService.checkConnection()
-            await modelManager.refreshAvailableModels()
-            setInitialModel()
-        }
-    }
-    
-    func setInitialModel() {
-        if let preferredModel = modelManager.userPreferredModel,
-           modelManager.availableModels.contains(where: { $0.name == preferredModel }) {
-            currentModel = preferredModel
-        } else if let firstModel = modelManager.availableModels.first {
-            currentModel = firstModel.name
-        }
-    }
-    
-    func sendMessage() {
-        guard canSendMessage else { return }
-        
-        let messageText = inputText.trimmingCharacters(in: .whitespacesAndNewlines)
-        
-        // ENHANCED: Check for conversational commands FIRST and execute them
-        let commandResult = quickChatManager.processAndExecuteConversationalCommand(messageText, projects: &projects)
-        
-        switch commandResult {
-        case .notACommand:
-            // Regular message handling - proceed normally
-            sendRegularMessage(messageText)
-            
-        case .projectCreated(let project):
-            // Command successfully created project
-            let userMessage = ChatMessage(id: UUID(), role: .user, content: messageText)
-            let confirmationMessage = ChatMessage(
-                id: UUID(),
-                role: .assistant,
-                content: "✅ Created project '\(project.title)' and moved this conversation there!"
-            )
-            
-            quickChatManager.addMessage(userMessage)
-            quickChatManager.addMessage(confirmationMessage)
-            
-            // Switch to the new project
-            withAnimation(.spring()) {
-                selectedProject = project
-            }
-            
-        case .movedToProject(let project):
-            // Command successfully moved to existing project
-            let userMessage = ChatMessage(id: UUID(), role: .user, content: messageText)
-            let confirmationMessage = ChatMessage(
-                id: UUID(),
-                role: .assistant,
-                content: "✅ Moved this conversation to '\(project.title)' project!"
-            )
-            
-            quickChatManager.addMessage(userMessage)
-            quickChatManager.addMessage(confirmationMessage)
-            
-            // Switch to the existing project
-            withAnimation(.spring()) {
-                selectedProject = project
-            }
-            
-        case .organizationTriggered:
-            // Command triggered organization panel
-            let userMessage = ChatMessage(id: UUID(), role: .user, content: messageText)
-            let responseMessage = ChatMessage(
-                id: UUID(),
-                role: .assistant,
-                content: "I'll help you organize this conversation. Let me suggest some options..."
-            )
-            
-            quickChatManager.addMessage(userMessage)
-            quickChatManager.addMessage(responseMessage)
-            
-        case .splitInitiated:
-            // Command initiated conversation splitting
-            let userMessage = ChatMessage(id: UUID(), role: .user, content: messageText)
-            let responseMessage = ChatMessage(
-                id: UUID(),
-                role: .assistant,
-                content: "🚧 Conversation splitting is coming soon! For now, I can help you create a new project."
-            )
-            
-            quickChatManager.addMessage(userMessage)
-            quickChatManager.addMessage(responseMessage)
-            
-        case .error(let errorMessage):
-            // Command failed
-            let userMessage = ChatMessage(id: UUID(), role: .user, content: messageText)
-            let errorResponseMessage = ChatMessage(
-                id: UUID(),
-                role: .assistant,
-                content: "❌ \(errorMessage)"
-            )
-            
-            quickChatManager.addMessage(userMessage)
-            quickChatManager.addMessage(errorResponseMessage)
-        }
-        
-        inputText = ""
-        
-        // Save projects after any command execution
-        PersistenceManager.saveProjects(projects)
-    }
-    
-    // FIXED: Moved sendRegularMessage out of local scope and removed private
-    func sendRegularMessage(_ messageText: String) {
-        let userMessage = ChatMessage(id: UUID(), role: .user, content: messageText)
-        
-        // Add to quick chat manager or project
-        if let selectedProject = selectedProject {
-            // Add to existing project
-            if let projectIndex = projects.firstIndex(where: { $0.id == selectedProject.id }) {
-                withAnimation(.easeInOut(duration: 0.3)) {
-                    projects[projectIndex].chats.append(userMessage)
-                }
-                PersistenceManager.saveProjects(projects)
-            }
-        } else {
-            // Add to quick chat
-            quickChatManager.addMessage(userMessage)
-        }
-        
-        isLoading = true
-        streamedMessage = ""
-        
-        // Generate AI response
-        Task {
-            await generateResponse(for: messageText, context: messages)
-        }
-    }
-    
-    func generateResponse(for message: String, context: [ChatMessage]) async {
-        guard await ollamaService.isModelAvailable(currentModel) else {
-            await handleError("Model '\(currentModel)' is not installed")
-            return
-        }
-        
-        let contextMessages = Array(context.suffix(10)) // Use recent context
-        
-        for await response in ollamaService.generateResponse(
-            prompt: message,
-            model: currentModel,
-            context: contextMessages,
-            stream: true
-        ) {
-            await MainActor.run {
-                self.streamedMessage = response.content
-                
-                if response.isComplete {
-                    // Add final message
-                    let aiMessage = ChatMessage(
-                        id: UUID(),
-                        role: .assistant,
-                        content: response.content
-                    )
-                    
-                    if let selectedProject = selectedProject {
-                        // Add to project
-                        if let projectIndex = projects.firstIndex(where: { $0.id == selectedProject.id }) {
-                            withAnimation(.easeInOut(duration: 0.3)) {
-                                projects[projectIndex].chats.append(aiMessage)
-                            }
-                            PersistenceManager.saveProjects(projects)
-                        }
-                    } else {
-                        // Add to quick chat
-                        quickChatManager.addMessage(aiMessage)
-                    }
-                    
-                    self.isLoading = false
-                    self.streamedMessage = ""
-                }
-            }
-        }
-        
-        // Fallback if streaming doesn't complete properly
-        await MainActor.run {
-            if self.isLoading {
-                self.isLoading = false
-                if !self.streamedMessage.isEmpty {
-                    let aiMessage = ChatMessage(
-                        id: UUID(),
-                        role: .assistant,
-                        content: self.streamedMessage
-                    )
-                    
-                    if let selectedProject = selectedProject {
-                        if let projectIndex = projects.firstIndex(where: { $0.id == selectedProject.id }) {
-                            projects[projectIndex].chats.append(aiMessage)
-                            PersistenceManager.saveProjects(projects)
-                        }
-                    } else {
-                        quickChatManager.addMessage(aiMessage)
-                    }
-                    
-                    self.streamedMessage = ""
-                }
-            }
-        }
-    }
-    
-    func handleError(_ message: String) async {
-        await MainActor.run {
-            let errorMessage = ChatMessage(
-                id: UUID(),
-                role: .assistant,
-                content: "⚠️ \(message)"
-            )
-            
-            if let selectedProject = selectedProject {
-                if let projectIndex = projects.firstIndex(where: { $0.id == selectedProject.id }) {
-                    projects[projectIndex].chats.append(errorMessage)
-                }
-            } else {
-                quickChatManager.addMessage(errorMessage)
-            }
-            
-            isLoading = false
-            streamedMessage = ""
-        }
-    }
-}
-
-// MARK: - Example Prompt Card
-
-struct ExamplePromptCard: View {
-    let icon: String
-    let title: String
-    let subtitle: String
-    let color: Color
-    let action: () -> Void
-    
-    var body: some View {
-        Button(action: action) {
-            VStack(alignment: .leading, spacing: 8) {
-                HStack {
-                    Image(systemName: icon)
-                        .foregroundColor(color)
-                        .font(.title2)
-                    
-                    Spacer()
-                }
-                
-                VStack(alignment: .leading, spacing: 4) {
-                    Text(title)
-                        .font(.headline)
-                        .foregroundColor(.primary)
-                    
-                    Text(subtitle)
-                        .font(.caption)
-                        .foregroundColor(.secondary)
-                        .lineLimit(2)
-                }
-            }
-            .padding()
-            .background(Color.gray.opacity(0.05))
-            .cornerRadius(12)
+            .padding(.horizontal, 8)
+            .padding(.vertical, 4)
+            .background(Color.orange.opacity(0.1))
+            .cornerRadius(8)
             .overlay(
-                RoundedRectangle(cornerRadius: 12)
-                    .stroke(color.opacity(0.3), lineWidth: 1)
+                RoundedRectangle(cornerRadius: 8)
+                    .stroke(Color.orange.opacity(0.3), lineWidth: 1)
             )
         }
         .buttonStyle(.plain)
-        .scaleEffect(1.0)
-        .animation(.spring(response: 0.3), value: UUID())
-        .onHover { hovering in
-            // Add hover effect if needed
-        }
     }
 }
 
-// MARK: - Revolutionary Message Components
-
-struct RevolutionaryMessageRowView: View {
-    let message: ChatMessage
-    @State private var isVisible = false
+struct RecentFileChip: View {
+    let file: KnowledgeFile
+    let onTap: () -> Void
     
     var body: some View {
-        HStack(alignment: .top, spacing: 12) {
-            // Avatar with enhanced design
-            ZStack {
-                Circle()
-                    .fill(message.role == .user ? Color.blue.opacity(0.2) : Color.green.opacity(0.2))
-                    .frame(width: 32, height: 32)
+        Button(action: onTap) {
+            HStack(spacing: 6) {
+                Image(systemName: file.fileIcon)
+                    .foregroundColor(file.knowledgeMetadata.detectedContentType.color)
+                    .font(.caption)
                 
-                Image(systemName: message.role == .user ? "person.fill" : "brain.head.profile")
-                    .foregroundColor(message.role == .user ? .blue : .green)
-                    .font(.system(size: 16, weight: .semibold))
-            }
-            .scaleEffect(isVisible ? 1.0 : 0.8)
-            .animation(.spring(response: 0.4, dampingFraction: 0.7), value: isVisible)
-            
-            VStack(alignment: .leading, spacing: 6) {
-                HStack {
-                    Text(message.role == .user ? "You" : "AI Assistant")
-                        .font(.caption)
-                        .bold()
-                        .foregroundColor(message.role == .user ? .blue : .green)
-                    
-                    Spacer()
-                    
-                    Text(formatTimestamp(message.timestamp))
-                        .font(.caption2)
-                        .foregroundColor(.secondary)
-                }
+                Text(file.name)
+                    .font(.caption)
+                    .lineLimit(1)
                 
-                Text(message.content)
-                    .textSelection(.enabled)
-                    .frame(maxWidth: .infinity, alignment: .leading)
-                    .padding(.vertical, 2)
+                Image(systemName: "clock")
+                    .foregroundColor(.blue)
+                    .font(.caption2)
             }
+            .padding(.horizontal, 8)
+            .padding(.vertical, 4)
+            .background(Color.blue.opacity(0.1))
+            .cornerRadius(8)
         }
-        .padding(.vertical, 4)
-        .opacity(isVisible ? 1.0 : 0.0)
-        .offset(y: isVisible ? 0 : 10)
-        .onAppear {
-            withAnimation(.easeOut(duration: 0.5).delay(0.1)) {
-                isVisible = true
-            }
-        }
-    }
-    
-    private func formatTimestamp(_ date: Date) -> String {
-        let formatter = DateFormatter()
-        formatter.timeStyle = .short
-        return formatter.string(from: date)
+        .buttonStyle(.plain)
     }
 }
 
-struct RevolutionaryStreamingMessageView: View {
-    let content: String
-    let isComplete: Bool
-    @State private var cursorVisible = true
+struct ContextualRecommendationCard: View {
+    let recommendation: ContextualRecommendation
+    let onAccept: () -> Void
+    let onDismiss: () -> Void
     
     var body: some View {
-        HStack(alignment: .top, spacing: 12) {
-            ZStack {
-                Circle()
-                    .fill(Color.green.opacity(0.2))
-                    .frame(width: 32, height: 32)
+        HStack(spacing: 12) {
+            // Recommendation type icon
+            VStack {
+                Image(systemName: recommendationIcon)
+                    .font(.title2)
+                    .foregroundColor(.blue)
                 
-                Image(systemName: "brain.head.profile")
-                    .foregroundColor(.green)
-                    .font(.system(size: 16, weight: .semibold))
+                Text("AI")
+                    .font(.caption2)
+                    .foregroundColor(.blue)
             }
             
             VStack(alignment: .leading, spacing: 6) {
-                HStack {
-                    Text("AI Assistant")
-                        .font(.caption)
-                        .bold()
-                        .foregroundColor(.green)
-                    
-                    if !isComplete {
-                        HStack(spacing: 2) {
-                            ForEach(0..<3) { index in
-                                Circle()
-                                    .fill(Color.green)
-                                    .frame(width: 3, height: 3)
-                                    .scaleEffect(cursorVisible ? 1.0 : 0.5)
-                                    .animation(
-                                        .easeInOut(duration: 0.6)
-                                        .repeatForever()
-                                        .delay(Double(index) * 0.2),
-                                        value: cursorVisible
-                                    )
+                Text(recommendation.title)
+                    .font(.headline)
+                    .foregroundColor(.primary)
+                
+                Text(recommendation.description)
+                    .font(.subheadline)
+                    .foregroundColor(.secondary)
+                    .lineLimit(2)
+                
+                if !recommendation.recommendedFiles.isEmpty {
+                    ScrollView(.horizontal, showsIndicators: false) {
+                        HStack(spacing: 4) {
+                            ForEach(recommendation.recommendedFiles.prefix(3)) { file in
+                                Text(file.name)
+                                    .font(.caption2)
+                                    .padding(.horizontal, 4)
+                                    .padding(.vertical, 2)
+                                    .background(Color.blue.opacity(0.1))
+                                    .foregroundColor(.blue)
+                                    .cornerRadius(4)
                             }
                         }
                     }
-                    
-                    Spacer()
                 }
-                
-                HStack {
-                    Text(content)
-                        .textSelection(.enabled)
-                        .frame(maxWidth: .infinity, alignment: .leading)
-                    
-                    if !isComplete && !content.isEmpty {
-                        Rectangle()
-                            .fill(Color.green)
-                            .frame(width: 2, height: 20)
-                            .opacity(cursorVisible ? 1.0 : 0.3)
-                            .animation(.easeInOut(duration: 0.8).repeatForever(), value: cursorVisible)
-                    }
-                }
-            }
-        }
-        .padding(.vertical, 4)
-        .onAppear {
-            cursorVisible = true
-        }
-    }
-}
-
-struct RevolutionaryLoadingView: View {
-    let model: String
-    @State private var animationPhase = 0
-    
-    var body: some View {
-        HStack(alignment: .top, spacing: 12) {
-            ZStack {
-                Circle()
-                    .fill(Color.green.opacity(0.2))
-                    .frame(width: 32, height: 32)
-                
-                Image(systemName: "brain.head.profile")
-                    .foregroundColor(.green)
-                    .font(.system(size: 16, weight: .semibold))
             }
             
-            VStack(alignment: .leading, spacing: 8) {
-                HStack {
-                    Text("AI Assistant")
-                        .font(.caption)
-                        .bold()
-                        .foregroundColor(.green)
-                    
-                    Spacer()
+            Spacer()
+            
+            VStack(spacing: 6) {
+                Button(actionButtonText) {
+                    onAccept()
                 }
+                .buttonStyle(.borderedProminent)
+                .controlSize(.small)
                 
-                HStack(spacing: 12) {
-                    HStack(spacing: 4) {
-                        ForEach(0..<3) { index in
-                            Circle()
-                                .fill(Color.green)
-                                .frame(width: 8, height: 8)
-                                .scaleEffect(animationPhase == index ? 1.2 : 0.8)
-                                .opacity(animationPhase == index ? 1.0 : 0.6)
-                        }
-                    }
-                    .onAppear {
-                        Timer.scheduledTimer(withTimeInterval: 0.4, repeats: true) { _ in
-                            withAnimation(.easeInOut(duration: 0.3)) {
-                                animationPhase = (animationPhase + 1) % 3
-                            }
-                        }
-                    }
-                    
-                    Text("Thinking with \(model)...")
-                        .font(.subheadline)
-                        .foregroundColor(.secondary)
+                Button("Dismiss") {
+                    onDismiss()
                 }
+                .buttonStyle(.bordered)
+                .controlSize(.small)
             }
         }
-        .padding(.vertical, 4)
+        .padding()
+        .background(Color.blue.opacity(0.05))
+        .cornerRadius(12)
+        .overlay(
+            RoundedRectangle(cornerRadius: 12)
+                .stroke(Color.blue.opacity(0.3), lineWidth: 1)
+        )
+        .shadow(color: .black.opacity(0.05), radius: 4, x: 0, y: 2)
+    }
+    
+    private var recommendationIcon: String {
+        switch recommendation.actionType {
+        case .reference: return "link"
+        case .upload: return "plus.rectangle.on.folder"
+        case .compare: return "rectangle.split.2x1"
+        case .summarize: return "text.alignleft"
+        }
+    }
+    
+    private var actionButtonText: String {
+        switch recommendation.actionType {
+        case .reference: return "Reference"
+        case .upload: return "Upload"
+        case .compare: return "Compare"
+        case .summarize: return "Summarize"
+        }
     }
 }
