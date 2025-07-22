@@ -4,7 +4,7 @@ import SwiftUI
 // MARK: - File Relationships - Revolutionary Connection Intelligence
 
 struct FileRelationship: Identifiable, Codable, Hashable {
-    let id: UUID = UUID()
+    var id: UUID = UUID()
     let relatedFileId: UUID
     let relationshipType: RelationshipType
     let strength: Double // 0.0 to 1.0
@@ -34,24 +34,9 @@ struct FileRelationship: Identifiable, Codable, Hashable {
             }
         }
     }
-}
-
-// MARK: - File Relationship Graph
-
-struct FileRelationshipGraph: Codable, Hashable {
-    var nodes: [FileNode] = []
-    var edges: [RelationshipEdge] = []
-}
-
-struct FileNode: Codable, Hashable {
-    let fileId: UUID
-    let position: CGPoint
-    let strength: Double
-}
-
-struct RelationshipEdge: Codable, Hashable {
-    let fromFileId: UUID
-    let toFileId: UUID
-    let relationshipType: FileRelationship.RelationshipType
-    let strength: Double
+    
+    // Custom CodingKeys to handle the id properly
+    enum CodingKeys: String, CodingKey {
+        case id, relatedFileId, relationshipType, strength, discoveredAt, evidence
+    }
 }

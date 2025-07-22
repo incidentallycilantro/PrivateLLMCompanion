@@ -84,8 +84,8 @@ class FileRelationshipDetector {
             return 0.0
         }
         
-        let words1 = Set(content1.lowercased().components(separatedBy: .whitespacesAndPunctuationCharacters))
-        let words2 = Set(content2.lowercased().components(separatedBy: .whitespacesAndPunctuationCharacters))
+        let words1 = Set(content1.lowercased().components(separatedBy: CharacterSet.whitespacesAndNewlines.union(.punctuationCharacters)))
+        let words2 = Set(content2.lowercased().components(separatedBy: CharacterSet.whitespacesAndNewlines.union(.punctuationCharacters)))
         
         let intersection = words1.intersection(words2)
         let union = words1.union(words2)

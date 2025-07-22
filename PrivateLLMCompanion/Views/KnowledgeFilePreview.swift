@@ -1,4 +1,64 @@
-.frame(minWidth: 250, maxWidth: 300)
+import SwiftUI
+import QuickLook
+import PDFKit
+
+// MARK: - Knowledge File Preview - Revolutionary File Viewer
+
+struct KnowledgeFilePreview: View {
+    let file: KnowledgeFile
+    @ObservedObject var knowledgeManager: KnowledgeManager
+    @Environment(\.dismiss) private var dismiss
+    
+    @State private var selectedTab: PreviewTab = .content
+    @State private var showingSmartActions = false
+    @State private var selectedSmartAction: SmartFileAction?
+    @State private var smartActionResult: SmartActionResult?
+    @State private var isExecutingAction = false
+    
+    enum PreviewTab: String, CaseIterable {
+        case content = "Content"
+        case insights = "AI Insights"
+        case relationships = "Connections"
+        case metadata = "Details"
+        
+        var icon: String {
+            switch self {
+            case .content: return "doc.text"
+            case .insights: return "brain.head.profile"
+            case .relationships: return "link.circle"
+            case .metadata: return "info.circle"
+            }
+        }
+    }
+    
+    var body: some View {
+        NavigationView {
+            // Sidebar with tabs
+            VStack(alignment: .leading, spacing: 0) {
+                // File header
+                fileHeaderSection
+                
+                Divider()
+                
+                // Tab navigation
+                List(PreviewTab.allCases, id: \.rawValue, selection: $selectedTab) { tab in
+                    HStack {
+                        Image(systemName: tab.icon)
+                            .foregroundColor(selectedTab == tab ? .blue : .secondary)
+                        
+                        Text(tab.rawValue)
+                            .foregroundColor(selectedTab == tab ? .primary : .secondary)
+                    }
+                    .tag(tab)
+                }
+                .listStyle(SidebarListStyle())
+                
+                Spacer()
+                
+                // Smart Actions
+                smartActionsSection
+            }
+            .frame(minWidth: 250, maxWidth: 300)
             
             // Main content area
             Group {
@@ -252,7 +312,7 @@ struct FileContentView: View {
                 Spacer()
                 
                 Button("Show in Finder") {
-                    let fileURL = knowledgeManager.fileManager.getFileURL(for: convertToProjectFile(file))
+                    let fileURL = knowledgeManager.getFileURL(for: file)
                     NSWorkspace.shared.selectFile(fileURL.path, inFileViewerRootedAtPath: fileURL.deletingLastPathComponent().path)
                 }
                 .buttonStyle(.bordered)
@@ -300,7 +360,7 @@ struct FileContentView: View {
     private func loadFileContent() {
         Task {
             do {
-                if let fileContent = try knowledgeManager.fileManager.readFileContent(for: convertToProjectFile(file)) {
+                if let fileContent = try knowledgeManager.readFileContent(for: file) {
                     await MainActor.run {
                         self.content = fileContent
                         self.isLoading = false
@@ -318,18 +378,6 @@ struct FileContentView: View {
                 }
             }
         }
-    }
-    
-    private func convertToProjectFile(_ knowledgeFile: KnowledgeFile) -> ProjectFile {
-        return ProjectFile(
-            name: knowledgeFile.name,
-            originalName: knowledgeFile.originalName,
-            fileExtension: knowledgeFile.fileExtension,
-            size: knowledgeFile.size,
-            isProjectLevel: knowledgeFile.isProjectLevel,
-            chatId: knowledgeFile.chatId,
-            localPath: knowledgeFile.localPath
-        )
     }
 }
 
@@ -430,173 +478,6 @@ struct AIInsightsView: View {
                             .background(Color.blue.opacity(0.05))
                             .cornerRadius(8)
                     }
-                )
-                
-            case .keyPoints(let points):
-                AnyView(
-                    VStack(alignment: .leading, spacing: 8) {
-                        Text("Key Points")
-                            .font(.headline)
-                        
-                        ForEach(points, id: \.self) { point in
-                            HStack(alignment: .top, spacing: 8) {
-                                Circle()
-                                    .fill(Color.green)
-                                    .frame(width: 6, height: 6)
-                                    .padding(.top, 6)
-                                
-                                Text(point)
-                                    .textSelection(.enabled)
-                            }
-                        }
-                    }
-                )
-                
-            case .relatedFiles(let files):
-                AnyView(
-                    VStack(alignment: .leading, spacing: 8) {
-                        Text("Related Files")
-                            .font(.headline)
-                        
-                        ForEach(files, id: \.id) { relatedFile in
-                            HStack {
-                                Image(systemName: relatedFile.fileIcon)
-                                    .foregroundColor(relatedFile.knowledgeMetadata.detectedContentType.color)
-                                
-                                VStack(alignment: .leading) {
-                                    Text(relatedFile.name)
-                                        .font(.subheadline)
-                                        .bold()
-                                    
-                                    Text(relatedFile.intelligentDescription)
-                                        .font(.caption)
-                                        .foregroundColor(.secondary)
-                                        .lineLimit(2)
-                                }
-                                
-                                Spacer()
-                            }
-                            .padding()
-                            .background(Color.gray.opacity(0.05))
-                            .cornerRadius(8)
-                        }
-                    }
-                )
-                
-            case .questions(let questions):
-                AnyView(
-                    VStack(alignment: .leading, spacing: 8) {
-                        Text("Discussion Questions")
-                            .font(.headline)
-                        
-                        ForEach(Array(questions.enumerated()), id: \.offset) { index, question in
-                            HStack(alignment: .top, spacing: 8) {
-                                Text("\(index + 1).")
-                                    .font(.subheadline)
-                                    .bold()
-                                    .foregroundColor(.blue)
-                                
-                                Text(question)
-                                    .textSelection(.enabled)
-                            }
-                        }
-                    }
-                )
-                
-            case .tags(let tags):
-                AnyView(
-                    VStack(alignment: .leading, spacing: 8) {
-                        Text("Suggested Tags")
-                            .font(.headline)
-                        
-                        FlowLayout(spacing: 8) {
-                            ForEach(tags, id: \.self) { tag in
-                                Text(tag)
-                                    .font(.caption)
-                                    .padding(.horizontal, 8)
-                                    .padding(.vertical, 4)
-                                    .background(Color.blue.opacity(0.1))
-                                    .foregroundColor(.blue)
-                                    .cornerRadius(8)
-                            }
-                        }
-                    }
-                )
-                
-            case .entities(let entities):
-                AnyView(
-                    VStack(alignment: .leading, spacing: 8) {
-                        Text("Named Entities")
-                            .font(.headline)
-                        
-                        ForEach(entities, id: \.text) { entity in
-                            HStack {
-                                Text(entity.text)
-                                    .font(.subheadline)
-                                    .bold()
-                                
-                                Text(entity.type.rawValue.capitalized)
-                                    .font(.caption)
-                                    .padding(.horizontal, 6)
-                                    .padding(.vertical, 2)
-                                    .background(entityColor(entity.type).opacity(0.2))
-                                    .foregroundColor(entityColor(entity.type))
-                                    .cornerRadius(4)
-                                
-                                Spacer()
-                                
-                                Text("\(Int(entity.confidence * 100))%")
-                                    .font(.caption)
-                                    .foregroundColor(.secondary)
-                            }
-                        }
-                    }
-                )
-                
-            case .error(let message):
-                AnyView(
-                    VStack {
-                        Image(systemName: "exclamationmark.triangle")
-                            .font(.system(size: 40))
-                            .foregroundColor(.red)
-                        
-                        Text("Error")
-                            .font(.headline)
-                            .foregroundColor(.red)
-                        
-                        Text(message)
-                            .foregroundColor(.secondary)
-                            .multilineTextAlignment(.center)
-                    }
-                )
-                
-            default:
-                AnyView(
-                    Text("Result type not implemented")
-                        .foregroundColor(.secondary)
-                )
-            }
-        }
-    }
-    
-    private func entityColor(_ type: NamedEntity.EntityType) -> Color {
-        switch type {
-        case .person: return .blue
-        case .organization: return .green
-        case .location: return .red
-        case .technology: return .purple
-        case .concept: return .orange
-        case .date: return .pink
-        case .number: return .cyan
-        }
-    }
-}
-
-extension SmartFileAction: Identifiable {
-    public var id: String { rawValue }
-}
-                            .textSelection(.enabled)
-                    }
                 } else {
                     InsightSection(title: "AI Summary", icon: "text.alignleft", color: .blue) {
                         Button("Generate Summary") {
@@ -605,126 +486,6 @@ extension SmartFileAction: Identifiable {
                             }
                         }
                         .buttonStyle(.borderedProminent)
-                    }
-                }
-                
-                // Key points
-                if !file.keyPoints.isEmpty {
-                    InsightSection(title: "Key Points", icon: "list.bullet", color: .green) {
-                        VStack(alignment: .leading, spacing: 8) {
-                            ForEach(file.keyPoints, id: \.self) { point in
-                                HStack(alignment: .top, spacing: 8) {
-                                    Circle()
-                                        .fill(Color.green)
-                                        .frame(width: 6, height: 6)
-                                        .padding(.top, 6)
-                                    
-                                    Text(point)
-                                        .textSelection(.enabled)
-                                        .frame(maxWidth: .infinity, alignment: .leading)
-                                }
-                            }
-                        }
-                    }
-                }
-                
-                // Topics and entities
-                if !file.knowledgeMetadata.primaryTopics.isEmpty {
-                    InsightSection(title: "Topics", icon: "tag", color: .purple) {
-                        FlowLayout(spacing: 8) {
-                            ForEach(file.knowledgeMetadata.primaryTopics, id: \.self) { topic in
-                                Text(topic)
-                                    .font(.caption)
-                                    .padding(.horizontal, 8)
-                                    .padding(.vertical, 4)
-                                    .background(Color.purple.opacity(0.1))
-                                    .foregroundColor(.purple)
-                                    .cornerRadius(8)
-                            }
-                        }
-                    }
-                }
-                
-                // AI Tags
-                if !file.aiTags.isEmpty {
-                    InsightSection(title: "AI Tags", icon: "sparkles", color: .orange) {
-                        FlowLayout(spacing: 8) {
-                            ForEach(file.aiTags, id: \.self) { tag in
-                                Text(tag)
-                                    .font(.caption)
-                                    .padding(.horizontal, 8)
-                                    .padding(.vertical, 4)
-                                    .background(Color.orange.opacity(0.1))
-                                    .foregroundColor(.orange)
-                                    .cornerRadius(8)
-                            }
-                        }
-                    }
-                }
-                
-                // Complexity analysis
-                InsightSection(title: "Complexity Analysis", icon: "chart.bar", color: .red) {
-                    VStack(alignment: .leading, spacing: 8) {
-                        HStack {
-                            Text("Level:")
-                                .fontWeight(.semibold)
-                            Text(file.knowledgeMetadata.complexity.description)
-                                .foregroundColor(.secondary)
-                            
-                            Spacer()
-                        }
-                        
-                        HStack {
-                            Text("Reading Time:")
-                                .fontWeight(.semibold)
-                            Text("\(file.knowledgeMetadata.readingTimeMinutes) minutes")
-                                .foregroundColor(.secondary)
-                            
-                            Spacer()
-                        }
-                        
-                        if file.knowledgeMetadata.wordCount > 0 {
-                            HStack {
-                                Text("Word Count:")
-                                    .fontWeight(.semibold)
-                                Text("\(file.knowledgeMetadata.wordCount)")
-                                    .foregroundColor(.secondary)
-                                
-                                Spacer()
-                            }
-                        }
-                    }
-                }
-                
-                // Sentiment analysis
-                if let sentiment = file.knowledgeMetadata.sentiment {
-                    InsightSection(title: "Content Sentiment", icon: "heart", color: .pink) {
-                        VStack(alignment: .leading, spacing: 8) {
-                            HStack {
-                                Text("Tone:")
-                                    .fontWeight(.semibold)
-                                Text(sentiment.overallTone.rawValue.capitalized)
-                                    .foregroundColor(.secondary)
-                                
-                                Spacer()
-                            }
-                            
-                            HStack {
-                                Text("Polarity:")
-                                    .fontWeight(.semibold)
-                                
-                                Rectangle()
-                                    .fill(sentiment.polarity > 0 ? Color.green : sentiment.polarity < 0 ? Color.red : Color.gray)
-                                    .frame(width: abs(sentiment.polarity) * 100, height: 4)
-                                    .cornerRadius(2)
-                                
-                                Text(String(format: "%.2f", sentiment.polarity))
-                                    .font(.caption)
-                                    .foregroundColor(.secondary)
-                                
-                                Spacer()
-                            }
-                        }
                     }
                 }
             }
@@ -1002,59 +763,6 @@ struct MetadataRow: View {
     }
 }
 
-struct FlowLayout: Layout {
-    let spacing: CGFloat
-    
-    init(spacing: CGFloat = 8) {
-        self.spacing = spacing
-    }
-    
-    func sizeThatFits(proposal: ProposedViewSize, subviews: Subviews, cache: inout ()) -> CGSize {
-        let width = proposal.width ?? 0
-        var height: CGFloat = 0
-        var currentX: CGFloat = 0
-        var currentY: CGFloat = 0
-        var rowHeight: CGFloat = 0
-        
-        for subview in subviews {
-            let subviewSize = subview.sizeThatFits(.unspecified)
-            
-            if currentX + subviewSize.width > width && currentX > 0 {
-                currentX = 0
-                currentY += rowHeight + spacing
-                rowHeight = 0
-            }
-            
-            currentX += subviewSize.width + spacing
-            rowHeight = max(rowHeight, subviewSize.height)
-        }
-        
-        height = currentY + rowHeight
-        return CGSize(width: width, height: height)
-    }
-    
-    func placeSubviews(in bounds: CGRect, proposal: ProposedViewSize, subviews: Subviews, cache: inout ()) {
-        var currentX: CGFloat = bounds.minX
-        var currentY: CGFloat = bounds.minY
-        var rowHeight: CGFloat = 0
-        
-        for subview in subviews {
-            let subviewSize = subview.sizeThatFits(.unspecified)
-            
-            if currentX + subviewSize.width > bounds.maxX && currentX > bounds.minX {
-                currentX = bounds.minX
-                currentY += rowHeight + spacing
-                rowHeight = 0
-            }
-            
-            subview.place(at: CGPoint(x: currentX, y: currentY), proposal: ProposedViewSize(subviewSize))
-            
-            currentX += subviewSize.width + spacing
-            rowHeight = max(rowHeight, subviewSize.height)
-        }
-    }
-}
-
 // MARK: - Smart Action Result View
 
 struct SmartActionResultView: View {
@@ -1100,7 +808,8 @@ struct SmartActionResultView: View {
                 }
             } else if let result = result {
                 ScrollView {
-                    resultContent(result)
+                    Text("Results will be displayed here")
+                        .foregroundColor(.secondary)
                 }
             } else {
                 Text("No result available")
@@ -1112,75 +821,34 @@ struct SmartActionResultView: View {
         .padding()
         .frame(width: 600, height: 500)
     }
-    
-    @ViewBuilder
-    private func resultContent(_ result: SmartActionResult) -> VStack<AnyView> {
-        VStack(alignment: .leading, spacing: 16) {
-            switch result {
-            case .summary(let summary):
-                AnyView(
-                    VStack(alignment: .leading, spacing: 8) {
-                        Text("AI-Generated Summary")
-                            .font(.headline)
-                        
-                        Text(summary)import SwiftUI
-import QuickLook
-import PDFKit
+}
 
-// MARK: - Knowledge File Preview - Revolutionary File Viewer
+// MARK: - SmartFileAction Extension
 
-struct KnowledgeFilePreview: View {
-    let file: KnowledgeFile
-    @ObservedObject var knowledgeManager: KnowledgeManager
-    @Environment(\.dismiss) private var dismiss
-    
-    @State private var selectedTab: PreviewTab = .content
-    @State private var showingSmartActions = false
-    @State private var selectedSmartAction: SmartFileAction?
-    @State private var smartActionResult: SmartActionResult?
-    @State private var isExecutingAction = false
-    
-    enum PreviewTab: String, CaseIterable {
-        case content = "Content"
-        case insights = "AI Insights"
-        case relationships = "Connections"
-        case metadata = "Details"
-        
-        var icon: String {
-            switch self {
-            case .content: return "doc.text"
-            case .insights: return "brain.head.profile"
-            case .relationships: return "link.circle"
-            case .metadata: return "info.circle"
-            }
-        }
+extension SmartFileAction: Identifiable {
+    public var id: String { rawValue }
+}
+
+// MARK: - KnowledgeManager Extension for File Access
+
+extension KnowledgeManager {
+    func getFileURL(for file: KnowledgeFile) -> URL {
+        return fileManager.getFileURL(for: convertToProjectFile(file))
     }
     
-    var body: some View {
-        NavigationView {
-            // Sidebar with tabs
-            VStack(alignment: .leading, spacing: 0) {
-                // File header
-                fileHeaderSection
-                
-                Divider()
-                
-                // Tab navigation
-                List(PreviewTab.allCases, id: \.rawValue, selection: $selectedTab) { tab in
-                    HStack {
-                        Image(systemName: tab.icon)
-                            .foregroundColor(selectedTab == tab ? .blue : .secondary)
-                        
-                        Text(tab.rawValue)
-                            .foregroundColor(selectedTab == tab ? .primary : .secondary)
-                    }
-                    .tag(tab)
-                }
-                .listStyle(SidebarListStyle())
-                
-                Spacer()
-                
-                // Smart Actions
-                smartActionsSection
-            }
-            .frame(
+    func readFileContent(for file: KnowledgeFile) throws -> String? {
+        return try fileManager.readFileContent(for: convertToProjectFile(file))
+    }
+    
+    private func convertToProjectFile(_ knowledgeFile: KnowledgeFile) -> ProjectFile {
+        return ProjectFile(
+            name: knowledgeFile.name,
+            originalName: knowledgeFile.originalName,
+            fileExtension: knowledgeFile.fileExtension,
+            size: knowledgeFile.size,
+            isProjectLevel: knowledgeFile.isProjectLevel,
+            chatId: knowledgeFile.chatId,
+            localPath: knowledgeFile.localPath
+        )
+    }
+}
